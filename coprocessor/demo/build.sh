@@ -18,9 +18,12 @@ tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git --exc
     zama-ai-repos/fhevm/listener zama-ai-repos/fhevm/shared \
     zama-ai-repos/fhevm/host-contracts/rust_bindings zama-ai-repos/fhevm/gateway-contracts/rust_bindings \
     zama-ai-repos/fhevm/library-solidity/lib zama-ai-repos/fhevm/library-solidity/config \
+    zama-ai-repos/fhevm/host-contracts/lib zama-ai-repos/fhevm/host-contracts/examples/EncryptedERC20.sol \
     zama-local-practice/coprocessor/demo > "$CTX/ctx.tar"
-# the one npm dependency the FHE library imports (node_modules is excluded above)
-tar -C "$PARENT" -r -f "$CTX/ctx.tar" zama-ai-repos/fhevm/library-solidity/node_modules/encrypted-types
+# the npm dependencies the contracts import (node_modules is excluded above)
+tar -C "$PARENT" -r -f "$CTX/ctx.tar" zama-ai-repos/fhevm/library-solidity/node_modules/encrypted-types \
+    zama-ai-repos/fhevm/host-contracts/node_modules/@openzeppelin/contracts/access \
+    zama-ai-repos/fhevm/host-contracts/node_modules/@openzeppelin/contracts/utils/Context.sol
 tar -C "$HERE" -r -f "$CTX/ctx.tar" Dockerfile
 docker build -f Dockerfile -t "local/coprocessor-demo:$TAG" - < "$CTX/ctx.tar"
 docker images 'local/coprocessor-demo' --format '{{.Repository}}:{{.Tag}}  {{.Size}}'

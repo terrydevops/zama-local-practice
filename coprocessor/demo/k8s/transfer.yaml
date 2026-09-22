@@ -1,10 +1,11 @@
-# Runs once per Argo CD sync of the coprocessor-demo application (Sync hook). Re-created on
-# every sync, so "sync the app" == "run the check": deploy Add.sol on anvil, send add(X, Y),
-# follow the result through the coprocessor. Output: kubectl logs job/coprocessor-demo -n coproc
+# Sync hook of the coprocessor-demo application, re-created on every sync, so "sync the app"
+# == "run the check". Scenario transfer: PracticeToken (upstream EncryptedERC20) on anvil, mint,
+# one transfer that fits and one that does not, both balances decrypted.
+# Output: kubectl logs job/coprocessor-demo-transfer -n coproc
 apiVersion: batch/v1
 kind: Job
 metadata:
-  name: coprocessor-demo
+  name: coprocessor-demo-transfer
   namespace: coproc
   annotations:
     argocd.argoproj.io/hook: Sync
@@ -14,7 +15,7 @@ spec:
   ttlSecondsAfterFinished: 3600
   template:
     metadata:
-      labels: { app: coprocessor-demo }
+      labels: { app: coprocessor-demo, scenario: transfer }
     spec:
       restartPolicy: Never
       containers:
@@ -22,8 +23,10 @@ spec:
           image: local/coprocessor-demo:dev
           imagePullPolicy: IfNotPresent
           env:
-            - { name: "X", value: "3" }
-            - { name: "Y", value: "5" }   # unquoted Y is a YAML boolean
+            - { name: SCENARIO, value: transfer }
+            - { name: MINT, value: "1000" }
+            - { name: AMOUNT, value: "250" }
+            - { name: TOO_MUCH, value: "900" }
             - { name: RPC_URL, value: "http://anvil.infra.svc.cluster.local:8545" }
             - name: PRIVATE_KEY
               valueFrom: { secretKeyRef: { name: demo-sender, key: private-key } }

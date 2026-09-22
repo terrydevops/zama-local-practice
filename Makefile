@@ -70,8 +70,9 @@ demo-image:
 
 demo:
 	kubectl --context $(CTX) -n argocd patch application coprocessor-demo --type merge -p '{"operation":{"sync":{"syncStrategy":{"hook":{}}}}}'
-	@sleep 5; kubectl --context $(CTX) -n coproc wait --for=condition=complete job/coprocessor-demo --timeout=600s >/dev/null || true
-	kubectl --context $(CTX) -n coproc logs job/coprocessor-demo
+	@sleep 5; for j in add transfer; do \
+	  kubectl --context $(CTX) -n coproc wait --for=condition=complete job/coprocessor-demo-$$j --timeout=600s >/dev/null || true; \
+	  echo "== $$j"; kubectl --context $(CTX) -n coproc logs job/coprocessor-demo-$$j; done
 
 smoke:
 	coprocessor/host-contracts/smoke.sh

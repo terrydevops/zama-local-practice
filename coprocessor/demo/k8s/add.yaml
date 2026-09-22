@@ -1,0 +1,46 @@
+# Sync hook of the coprocessor-demo application, re-created on every sync, so "sync the app"
+# == "run the check". Scenario add: deploy Add.sol on anvil, send add(X, Y), follow the
+# result through the coprocessor. Output: kubectl logs job/coprocessor-demo-add -n coproc
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: coprocessor-demo-add
+  namespace: coproc
+  annotations:
+    argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
+spec:
+  backoffLimit: 0
+  ttlSecondsAfterFinished: 3600
+  template:
+    metadata:
+      labels: { app: coprocessor-demo, scenario: add }
+    spec:
+      restartPolicy: Never
+      containers:
+        - name: coprocessor-demo
+          image: local/coprocessor-demo:dev
+          imagePullPolicy: IfNotPresent
+          env:
+            - { name: SCENARIO, value: add }
+            - { name: "X", value: "3" }
+            - { name: "Y", value: "5" }   # unquoted Y is a YAML boolean
+            - { name: RPC_URL, value: "http://anvil.infra.svc.cluster.local:8545" }
+            - name: PRIVATE_KEY
+              valueFrom: { secretKeyRef: { name: demo-sender, key: private-key } }
+            - name: ACL_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: acl.address } }
+            - name: FHEVM_EXECUTOR_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: fhevm_executor.address } }
+            - name: KMS_VERIFIER_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: kms_verifier.address } }
+            # $(VAR) expansion only sees variables declared earlier in this list
+            - name: DB_USER
+              valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }
+            - name: DB_PASSWORD
+              valueFrom: { secretKeyRef: { name: coprocessor-db, key: password } }
+            - name: DATABASE_URL
+              value: postgresql://$(DB_USER):$(DB_PASSWORD)@postgres.infra.svc.cluster.local:5432/coprocessor
+          resources:
+            requests: { cpu: 200m, memory: 1Gi }
+            limits:   { cpu: "2", memory: 6Gi }   # decrypt loads the server key

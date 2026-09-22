@@ -24,7 +24,7 @@ coprocessor/                  everything specific to the coprocessor
   host-contracts/             contracts chart values (deploy Job) + smoke.sh
   sql-exporter/values.yaml    upstream exporter chart values
   monitoring/                 alert rules + Grafana dashboard
-  demo/                       Add.sol + Rust runner: 3 + 5 through chain and coprocessor (sync-hook Job)
+  demo/                       contracts + Rust runner: on-chain checks through the coprocessor (sync-hook Jobs)
   chaos/  seed/  jobs/  scripts/
 mpc/                          later, same shape
 ```
@@ -65,7 +65,7 @@ repo), `protobuf`. The fhevm checkout is expected at `../zama-ai-repos/fhevm` wi
 make up        # kind cluster, images, generated secrets + CoreDNS, Argo CD + deploy key, root app, seed
 make job       # 20 ERC20 transfers through the pipeline
 make watch     # counters
-make demo      # deploy Add.sol on anvil, add 3 and 5 through the whole pipeline, decrypt
+make demo      # on-chain checks: 3 + 5, and a confidential token transfer
 make smoke     # one trivialEncrypt on the anvil chain, followed into the DB and tfhe-worker
 make down
 ```
@@ -74,22 +74,30 @@ make down
 scripts the Makefile calls. UIs: `make argocd-ui` (:8080), `make grafana` (:13000),
 `make prom` (:9090); all anonymous read-only.
 
-## End-to-end check
+## End-to-end checks
 
-`coprocessor/demo/` deploys `contracts/src/Add.sol` on the anvil chain and sends `add(3, 5)`.
-That one transaction encrypts both numbers, adds them and allows the caller to read the
-result. host-listener turns the events into computations, tfhe-worker computes the sum,
-sns-worker uploads it; the demo follows the result handle from the receipt into the
-database, decrypts it with the test client key and prints `3 + 5 = 8 (on chain)`.
+`coprocessor/demo/` runs contracts on the anvil chain and follows their results through the
+coprocessor: host-listener turns the events into computations, tfhe-worker computes,
+sns-worker uploads, and the runner decrypts the result handles with the test client key.
+Two scenarios, each an Argo CD sync-hook Job of the `coprocessor-demo` application:
+
+- `add`: `contracts/src/Add.sol` encrypts 3 and 5, adds them and allows the caller, in one
+  transaction. Prints `3 + 5 = 8 (on chain)`.
+- `transfer`: `contracts/src/PracticeToken.sol` inherits the upstream `EncryptedERC20`
+  example unchanged. Mint 1000, transfer 250, then try to transfer 900: the contract moves an
+  encrypted 0 instead and the chain shows the same Transfer event either way. Both balances
+  are decrypted and must read 750 and 250.
 
 ```bash
-coprocessor/demo/run.sh     # from the laptop: forge build, port-forward anvil, cargo run
-make demo-image             # build local/coprocessor-demo:dev (forge stage + Rust), load into kind
-make demo                   # sync the coprocessor-demo app == run the Job, print its log
+coprocessor/demo/run.sh [add|transfer]   # from the laptop: forge build, port-forward anvil, cargo run
+make demo-image                          # build local/coprocessor-demo:dev (forge stage + Rust), load into kind
+make demo                                # sync the coprocessor-demo app == run both Jobs, print their logs
 ```
 
 The client key only exists in the test keyset; on a real network decryption goes through
-the KMS, which this setup does not have.
+the KMS, which this setup does not have. Encrypted inputs with proofs (`transfer` with an
+`externalEuint64`) need the gateway, which is not here either; `transferPlain` encrypts the
+amount inside the contract instead.
 
 ## Notes
 
