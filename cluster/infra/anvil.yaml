@@ -9,9 +9,8 @@ metadata:
   namespace: infra
 data:
   CHAIN_ID: "12345"
-  # Test mnemonic from the upstream test-suite (templates/env/.env.host-node). The host
-  # contracts deployer key is derived from it, so it has to be this one.
-  MNEMONIC: "adapt mosquito move limb mobile illegal tree voyage juice mosquito burger raise father hope layer"
+# MNEMONIC comes from the generated Secret anvil-mnemonic (cluster/bootstrap/secrets.sh); the
+# host contracts deployer key is derived from the same phrase.
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -38,7 +37,9 @@ spec:
       containers:
         - name: anvil
           image: ghcr.io/foundry-rs/foundry:v1.3.5
-          envFrom: [ { configMapRef: { name: anvil-config } } ]
+          envFrom:
+            - configMapRef: { name: anvil-config }
+            - secretRef: { name: anvil-mnemonic }
           command: ["sh", "-c"]
           args:
             - exec anvil --block-time 1 --host 0.0.0.0 --port 8545 --chain-id "$CHAIN_ID"

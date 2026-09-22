@@ -3,8 +3,10 @@
 #
 # Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
 # belongs to one system carries its prefix (coprocessor-*).
-# Waves: 0 infra -> 1 monitoring (CRDs) -> 2 workers, exporter -> 3 rules, dashboard, chaos
-# -> 4 demo. Application health checks are on (argocd-values.yaml) so a wave waits for the
+# Waves: 0 infra -> 1 monitoring (CRDs), host contracts Job -> 2 workers, exporter
+# -> 3 listeners, rules, dashboard, chaos -> 4 demo.
+# The coprocessor chart is installed as several releases like coprocessor-operator does:
+# workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
 # previous one to be healthy.
 # Every child carries the resources finalizer: removing or renaming an entry deletes the
 # Application and everything it deployed.
@@ -55,8 +57,31 @@ applications:
       automated: { prune: true, selfHeal: true }
       syncOptions: [CreateNamespace=true, ServerSideApply=true]
 
-  # Workers via the upstream chart, values from this repo.
-  coprocessor:
+  # Host contracts on the anvil chain: a Job that deploys once and writes eth-sc-addresses.
+  # Jobs are immutable, so a changed spec is replaced rather than patched.
+  coprocessor-host-contracts:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/contracts
+        helm:
+          releaseName: host-contracts
+          valueFiles: [$values/coprocessor/host-contracts/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true, Replace=true]
+
+  # Workers release of the upstream chart (helm release "coprocessor", so resource names,
+  # alert selectors and chaos targets keep the plain coprocessor-* names).
+  coprocessor-workers:
     namespace: argocd
     additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
@@ -67,7 +92,7 @@ applications:
         path: charts/coprocessor
         helm:
           releaseName: coprocessor
-          valueFiles: [$values/coprocessor/values.yaml]
+          valueFiles: [$values/coprocessor/workers/values.yaml]
       - repoURL: git@github.com:terrydevops/zama-local-practice.git
         targetRevision: master
         ref: values
@@ -93,6 +118,26 @@ applications:
         targetRevision: master
         ref: values
     destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
+  # host-listener for the anvil chain, one release per chain.
+  coprocessor-anvil-listener:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/coprocessor
+        helm:
+          releaseName: coprocessor-anvil-listener
+          valueFiles: [$values/coprocessor/listeners/anvil/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
 

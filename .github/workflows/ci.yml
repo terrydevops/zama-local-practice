@@ -23,6 +23,9 @@ jobs:
           dockerfile: coprocessor/images/Dockerfile
       - uses: hadolint/hadolint-action@v3.1.0
         with:
+          dockerfile: coprocessor/images/host-contracts.Dockerfile
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
           dockerfile: coprocessor/demo/Dockerfile
 
   manifests:
@@ -37,7 +40,7 @@ jobs:
         run: |
           ref=$(cat .fhevm-ref)
           git clone --filter=blob:none --no-checkout https://github.com/zama-ai/fhevm.git /tmp/fhevm
-          git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter
+          git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter charts/contracts
           git -C /tmp/fhevm checkout "$ref"
       - uses: azure/setup-helm@v4
       - name: kubeconform
@@ -48,9 +51,13 @@ jobs:
           helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
           helm template root argo/argocd-apps --version 2.0.5 -n argocd -f cluster/apps/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-      - name: render + validate the coprocessor chart
+      - name: render + validate the coprocessor releases
         run: |
-          helm template coprocessor /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/values.yaml \
+          helm template coprocessor /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/workers/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template coprocessor-anvil-listener /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/listeners/anvil/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template host-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-contracts/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the sql-exporter chart
         run: |

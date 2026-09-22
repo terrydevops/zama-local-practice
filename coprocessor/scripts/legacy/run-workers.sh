@@ -20,7 +20,7 @@ export AWS_ENDPOINT_URL=http://127.0.0.1:9000
 export AWS_REGION=eu-west-1
 export FORCE_LEGACY_SERVER_KEY=false
 # throwaway dev key for sns-worker attestation signing (anvil account #0)
-SNS_SIGNER_KEY=0x<anvil-account-0-key>
+SNS_SIGNER_KEY=$(kubectl --context "${KUBE_CONTEXT:-kind-zama-practice}" -n coproc get secret coprocessor-tx-sender -o jsonpath='{.data.private-key}' | base64 -d)
 
 start_one() {
   local name=$1; shift

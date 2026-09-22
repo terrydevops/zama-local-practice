@@ -1,0 +1,75 @@
+# Deploys the host contracts to the anvil chain with the upstream chart fhevm/charts/contracts:
+# a Job runs hardhat, then writes every address into the ConfigMap eth-sc-addresses (keys like
+# acl.address) and stamps contracts.version. With preventRedeployment the Job is a no-op once
+# that stamp matches the image tag, so the Application can stay on automated sync.
+# Environment mirrors test-suite/fhevm/templates/env/.env.host-sc (public test addresses only);
+# the deployer key comes from the generated Secret host-chain-deployer.
+#
+# Deployed by Argo CD (coprocessor-host-contracts in cluster/apps/values.yaml) into the
+# coproc namespace, next to the listener that reads the ConfigMap.
+
+scDeploy:
+  enabled: true
+  preventRedeployment: true
+  image:
+    name: local/host-contracts       # practice: built by coprocessor/images/build.sh
+    tag: dev
+  configmap:
+    name: eth-sc-addresses
+  env:
+    - { name: HARDHAT_NETWORK, value: staging }          # chain id 12345 in hardhat.config.ts
+    - { name: RPC_URL, value: "http://anvil.infra.svc.cluster.local:8545" }
+    - name: MNEMONIC
+      valueFrom: { secretKeyRef: { name: host-chain-deployer, key: mnemonic } }
+    - name: DEPLOYER_PRIVATE_KEY
+      valueFrom: { secretKeyRef: { name: host-chain-deployer, key: deployer-private-key } }
+    # gateway side (no gateway chain locally; these are the e2e template's addresses)
+    - { name: CHAIN_ID_GATEWAY, value: "54321" }
+    - { name: DECRYPTION_ADDRESS, value: "0xF0bFB159C7381F7CB332586004d8247252C5b816" }
+    - { name: INPUT_VERIFICATION_ADDRESS, value: "0x3b12Fc766Eb598b285998877e8E90F3e43a1F8d2" }
+    # KMS context: one node, thresholds 1
+    - { name: NUM_KMS_NODES, value: "1" }
+    - { name: PUBLIC_DECRYPTION_THRESHOLD, value: "1" }
+    - { name: USER_DECRYPTION_THRESHOLD, value: "1" }
+    - { name: KMS_GEN_THRESHOLD, value: "1" }
+    - { name: MPC_THRESHOLD, value: "1" }
+    - { name: KMS_SIGNER_ADDRESS_0, value: "0x0Ea5BA6Bdb66553ED882CDB7cc78630340e0F031" }
+    - { name: KMS_TX_SENDER_ADDRESS_0, value: "0x31de9c8ac5ecd5eaceddddee531e9bad8ac9c2a5" }
+    - { name: KMS_NODE_STORAGE_URL_0, value: "http://minio.infra.svc.cluster.local:9000/kms-public" }
+    - { name: KMS_NODE_IP_0, value: "127.0.0.1" }
+    - { name: KMS_NODE_PARTY_ID_0, value: "1" }
+    - { name: KMS_NODE_MPC_IDENTITY_0, value: "kms-node-0" }
+    - { name: KMS_NODE_CA_CERT_0, value: "0x" }
+    - { name: KMS_NODE_STORAGE_PREFIX_0, value: "kms-node-0" }
+    - { name: KMS_SOFTWARE_VERSION, value: "0.1.0" }
+    - { name: KMS_PCR_VALUES, value: '[{"pcr0":"0x00","pcr1":"0x00","pcr2":"0x00"}]' }
+    # coprocessor signer set: one coprocessor, its signer is the sns-worker wallet
+    # (mnemonic account 11, see cluster/bootstrap/secrets.sh)
+    - { name: NUM_COPROCESSORS, value: "1" }
+    - { name: COPROCESSOR_THRESHOLD, value: "1" }
+    - { name: COPROCESSOR_SIGNER_ADDRESS_0, value: "0x6518D50aDc9036Df37119eA465a8159E34417E2E" }
+    # pausers: mnemonic account 2
+    - { name: NUM_PAUSERS, value: "1" }
+    - { name: PAUSER_ADDRESS_0, value: "0xa44366bAA26296c1409AD1e284264212029F02f1" }
+  deployCommands:
+    - npx hardhat task:deployAllHostContracts --with-kms-generation true
+    - npx hardhat task:addHostPausers --use-internal-proxy-address true
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: "2", memory: 3Gi }    # hardhat compiles everything on first run
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10000
+    fsGroup: 10001
+
+persistence:
+  enabled: true
+  mountPath: /app/addresses
+  volumeClaim:
+    name: host-contracts-addresses
+    create: true
+    storageClassName: standard         # kind local-path
+    storageCapacity: 100Mi
+
+scUpgrade:
+  enabled: false

@@ -18,8 +18,10 @@ cluster/                      one cluster
   infra/                      Application "infra": postgres, minio, anvil
   platform/<name>/values.yaml third-party charts: monitoring, chaos-mesh
 coprocessor/                  everything specific to the coprocessor
-  images/                     Dockerfile (workers, host-listener) + build.sh
-  values.yaml                 upstream chart values (Application "coprocessor")
+  images/                     Dockerfiles (workers, host-listener, host-contracts) + build.sh
+  workers/values.yaml         upstream chart, workers release (Application "coprocessor-workers")
+  listeners/<chain>/values.yaml   upstream chart, one host-listener release per chain
+  host-contracts/             contracts chart values (deploy Job) + smoke.sh
   sql-exporter/values.yaml    upstream exporter chart values
   monitoring/                 alert rules + Grafana dashboard
   demo/                       encrypt 3 and 5, add, decrypt (Argo sync-hook Job)
@@ -36,12 +38,16 @@ Rules:
   to one system carries its prefix (`coprocessor-monitoring`, `coprocessor-demo`).
 - A directory is owned by Argo CD if `cluster/apps/values.yaml` points at it. `cluster/bootstrap/`
   and the chaos experiments are always applied by hand.
-- Sync waves: 0 infra, 1 monitoring, 2 workers and exporter, 3 rules and chaos, 4 demo.
-  Application health checks are on, so a wave waits for the previous one.
+- The coprocessor chart is installed as several releases, the way coprocessor-operator does it:
+  workers, one listener per host chain, later the gateway side. Each is its own Application.
+- Sync waves: 0 infra, 1 monitoring and the host contracts Job, 2 workers and exporter,
+  3 listeners, rules and chaos, 4 demo. Application health checks are on, so a wave waits for
+  the previous one.
 - Every child Application carries the resources finalizer and the root prunes: removing or
   renaming an entry deletes the Application and everything it deployed.
-- Outputs of one-shot actions go into git: contract addresses land in `coprocessor/values.yaml`
-  (the chart renders the `eth-sc-addresses` ConfigMap from them).
+- One-shot actions run as Jobs that record their output in the cluster: the host contracts
+  deploy Job writes every address into the ConfigMap `eth-sc-addresses`, and the listener reads
+  it by key. The Job stamps the version it deployed and is a no-op afterwards.
 - `.fhevm-ref` is the only place the fhevm commit is typed by hand. Images are labelled with it
   and CI checks both chart sources in `cluster/apps/values.yaml` pin it.
 - No credentials in git, not even practice ones. `cluster/bootstrap/secrets.sh` generates them into a
@@ -59,7 +65,8 @@ repo), `protobuf`. The fhevm checkout is expected at `../zama-ai-repos/fhevm` wi
 make up        # kind cluster, images, generated secrets + CoreDNS, Argo CD + deploy key, root app, seed
 make job       # 20 ERC20 transfers through the pipeline
 make watch     # counters
-make demo      # run the end-to-end check as an Argo CD sync
+make demo      # run the end-to-end check as an Argo CD sync (writes to the DB directly)
+make smoke     # one trivialEncrypt on the anvil chain through host-listener and the workers
 make down
 ```
 
@@ -92,6 +99,8 @@ the KMS, which this setup does not have.
   3.5 GB. Limits below that get OOMKilled.
 - The S3 SDK addresses buckets as `<bucket>.<host>`; minio in-cluster needs the CoreDNS rewrite
   (with `answer auto`, otherwise glibc rejects the reply).
-- anvil keeps its state on a PVC. Without that a pod restart resets the chain to block 0 and the
-  host-listener waits forever for a block height it already recorded.
+- The host chain is anvil with the upstream test-suite flags and mnemonic; the contracts deploy
+  Job and `make smoke` use accounts derived from it. anvil keeps its state on a PVC. Without
+  that a pod restart resets the chain to block 0 and the host-listener waits forever for a
+  block height it already recorded.
 - `BatchSpanProcessor.ExportError` in every log is the missing OTLP collector. Harmless.

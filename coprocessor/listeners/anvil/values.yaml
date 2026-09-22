@@ -1,0 +1,59 @@
+# Host-listener release for the anvil chain, same split as
+# coprocessor-operator/helm-values/*/values-eth-coproc-listener-*.yaml: one release per host
+# chain, nothing else enabled. Contract addresses come from the eth-sc-addresses ConfigMap
+# that the coprocessor-host-contracts Job writes.
+#
+# Deployed by Argo CD (coprocessor-anvil-listener in cluster/apps/values.yaml) from the chart
+# at .fhevm-ref. Render locally: coprocessor/scripts/deploy.sh render
+
+commonConfig:
+  databaseUser:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }
+  databasePassword:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: password } }
+  databaseEndpoint:
+    value: "postgres.infra.svc.cluster.local:5432"
+  databaseUrl: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_ENDPOINT)/coprocessor"
+  tracing:
+    enabled: false
+
+hostListenerShared:
+  enabled: true
+  image:
+    name: local/host-listener        # practice: built by coprocessor/images/build.sh
+    tag: dev
+  replicas: 1
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+chains:
+  - name: anvil
+    chainId: "12345"
+    wsUrl: "ws://anvil.infra.svc.cluster.local:8545"
+    httpUrl: "http://anvil.infra.svc.cluster.local:8545"
+    aclContractAddressValueFrom:
+      configMapKeyRef: { name: eth-sc-addresses, key: acl.address }
+    fhevmExecutorContractAddressValueFrom:
+      configMapKeyRef: { name: eth-sc-addresses, key: fhevm_executor.address }
+    kmsGenerationContractAddressValueFrom:
+      configMapKeyRef: { name: eth-sc-addresses, key: kms_generation.address }
+    hostListener:
+      enabled: true
+      useLegacyName: true
+
+# ---------------------------------------------------------------- everything else off
+tfheWorker:        { enabled: false }
+zkProofWorker:     { enabled: false }
+snsWorker:         { enabled: false }
+dbMigration:       { enabled: false }
+hostContractConfigMap:  { enabled: false }   # written by the deploy Job, not rendered here
+hostListenerPollerShared:      { enabled: false }
+hostListenerCatchupOnlyShared: { enabled: false }
+hostListenerConsumerShared:    { enabled: false }
+gwListener:        { enabled: false }
+txSender:          { enabled: false }
+upgradeController: { enabled: false }
+consensusDetector: { enabled: false }

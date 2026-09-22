@@ -1,10 +1,10 @@
-# Practice values for the upstream chart fhevm/charts/coprocessor (0.13.x).
-# Same shape as coprocessor-operator/helm-values/*/values-coproc-workers-*.yaml:
-# only the three workers are enabled; listeners, tx-sender, db-migration and the
-# blue-green controllers are off. Differences from testnet are marked "practice:".
+# Workers release of the upstream chart fhevm/charts/coprocessor (0.13.x), same split as
+# coprocessor-operator/helm-values/*/values-coproc-workers-*.yaml: only the three workers.
+# Listeners are their own release per chain (coprocessor/listeners/<chain>/), gateway side and
+# db-migration are off. Differences from testnet are marked "practice:".
 #
-# Deployed by Argo CD (coprocessor in cluster/apps/values.yaml) from the chart at .fhevm-ref.
-# Render locally: coprocessor/scripts/deploy.sh render
+# Deployed by Argo CD (coprocessor-workers in cluster/apps/values.yaml) from the chart at
+# .fhevm-ref, helm release name "coprocessor". Render locally: coprocessor/scripts/deploy.sh render
 
 commonConfig:
   # practice: plain password auth to the in-cluster postgres (testnet: RDS via secret/configmap)
@@ -20,7 +20,7 @@ commonConfig:
   tracing:
     enabled: false   # practice: no OTLP collector yet
 
-chains: []           # no host chain listeners; the stress generator writes computations directly
+chains: []           # listeners live in their own release, see coprocessor/listeners/
 
 # ---------------------------------------------------------------- workers
 tfheWorker:
@@ -93,9 +93,11 @@ snsWorker:
   wallet:
     enabled: true
     awsKms: { enabled: false }
+    # practice: signer key in the generated Secret coprocessor-tx-sender (cluster/bootstrap/secrets.sh);
+    # its address is the coprocessor signer the host contracts register. testnet: AWS KMS.
     secret:
-      # practice: throwaway dev key (anvil account #0). testnet: AWS KMS or a real Secret.
-      value: "0x<anvil-account-0-key>"
+      name: coprocessor-tx-sender
+      key: private-key
   extraArgs:
     - --pg-listen-channels
     - event_pbs_computations
