@@ -1,0 +1,15 @@
+# Compiles Add.sol against the FHE library of the fhevm checkout, expected at
+# ../../../../zama-ai-repos/fhevm (next to this repo; the image build lays the context out
+# the same way).
+[profile.default]
+src = "src"
+out = "out"
+libs = []
+solc = "0.8.24"
+optimizer = true
+optimizer_runs = 200
+remappings = [
+  "@fhevm/solidity/=../../../../zama-ai-repos/fhevm/library-solidity/",
+  "encrypted-types/=../../../../zama-ai-repos/fhevm/library-solidity/node_modules/encrypted-types/",
+]
+allow_paths = ["../../../../zama-ai-repos/fhevm/library-solidity"]

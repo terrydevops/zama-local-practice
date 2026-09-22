@@ -126,4 +126,13 @@ type: Opaque
 stringData:
   private-key: $(key 11)
 YAML
+ensure demo-sender coproc <<YAML
+# coprocessor-demo Job: the account that deploys Add.sol and sends add(3,5), account 0 of the phrase
+apiVersion: v1
+kind: Secret
+metadata: { name: demo-sender, namespace: coproc }
+type: Opaque
+stringData:
+  private-key: $(key 0)
+YAML
 echo "$OUT is up to date"

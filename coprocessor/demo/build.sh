@@ -13,10 +13,14 @@ CLUSTER=${KIND_CLUSTER:-zama-practice}
 export DOCKER_BUILDKIT=1
 CTX=$(mktemp -d); trap 'rm -rf "$CTX"' EXIT
 tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git --exclude=fhevm-keys --exclude=logs \
+    --exclude=coprocessor/demo/contracts/out --exclude=coprocessor/demo/contracts/cache \
     zama-ai-repos/fhevm/coprocessor/proto zama-ai-repos/fhevm/coprocessor/fhevm-engine \
     zama-ai-repos/fhevm/listener zama-ai-repos/fhevm/shared \
     zama-ai-repos/fhevm/host-contracts/rust_bindings zama-ai-repos/fhevm/gateway-contracts/rust_bindings \
+    zama-ai-repos/fhevm/library-solidity/lib zama-ai-repos/fhevm/library-solidity/config \
     zama-local-practice/coprocessor/demo > "$CTX/ctx.tar"
+# the one npm dependency the FHE library imports (node_modules is excluded above)
+tar -C "$PARENT" -r -f "$CTX/ctx.tar" zama-ai-repos/fhevm/library-solidity/node_modules/encrypted-types
 tar -C "$HERE" -r -f "$CTX/ctx.tar" Dockerfile
 docker build -f Dockerfile -t "local/coprocessor-demo:$TAG" - < "$CTX/ctx.tar"
 docker images 'local/coprocessor-demo' --format '{{.Repository}}:{{.Tag}}  {{.Size}}'

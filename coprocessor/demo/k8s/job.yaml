@@ -1,5 +1,6 @@
 # Runs once per Argo CD sync of the coprocessor-demo application (Sync hook). Re-created on
-# every sync, so "sync the app" == "run the check". Output: kubectl logs job/coprocessor-demo -n coproc
+# every sync, so "sync the app" == "run the check": deploy Add.sol on anvil, send add(X, Y),
+# follow the result through the coprocessor. Output: kubectl logs job/coprocessor-demo -n coproc
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -23,6 +24,15 @@ spec:
           env:
             - { name: "X", value: "3" }
             - { name: "Y", value: "5" }   # unquoted Y is a YAML boolean
+            - { name: RPC_URL, value: "http://anvil.infra.svc.cluster.local:8545" }
+            - name: PRIVATE_KEY
+              valueFrom: { secretKeyRef: { name: demo-sender, key: private-key } }
+            - name: ACL_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: acl.address } }
+            - name: FHEVM_EXECUTOR_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: fhevm_executor.address } }
+            - name: KMS_VERIFIER_ADDRESS
+              valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: kms_verifier.address } }
             # $(VAR) expansion only sees variables declared earlier in this list
             - name: DB_USER
               valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }

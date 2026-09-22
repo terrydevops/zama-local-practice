@@ -24,7 +24,7 @@ coprocessor/                  everything specific to the coprocessor
   host-contracts/             contracts chart values (deploy Job) + smoke.sh
   sql-exporter/values.yaml    upstream exporter chart values
   monitoring/                 alert rules + Grafana dashboard
-  demo/                       encrypt 3 and 5, add, decrypt (Argo sync-hook Job)
+  demo/                       Add.sol + Rust runner: 3 + 5 through chain and coprocessor (sync-hook Job)
   chaos/  seed/  jobs/  scripts/
 mpc/                          later, same shape
 ```
@@ -65,7 +65,7 @@ repo), `protobuf`. The fhevm checkout is expected at `../zama-ai-repos/fhevm` wi
 make up        # kind cluster, images, generated secrets + CoreDNS, Argo CD + deploy key, root app, seed
 make job       # 20 ERC20 transfers through the pipeline
 make watch     # counters
-make demo      # run the end-to-end check as an Argo CD sync (writes to the DB directly)
+make demo      # deploy Add.sol on anvil, add 3 and 5 through the whole pipeline, decrypt
 make smoke     # one trivialEncrypt on the anvil chain, followed into the DB and tfhe-worker
 make down
 ```
@@ -76,13 +76,15 @@ scripts the Makefile calls. UIs: `make argocd-ui` (:8080), `make grafana` (:1300
 
 ## End-to-end check
 
-`coprocessor/demo/` encrypts 3 and 5 (trivial encrypt), asks for the sum, waits for
-tfhe-worker, decrypts the result with the test client key and prints `3 + 5 = 8`. It also
-waits for sns-worker to upload and record the digests.
+`coprocessor/demo/` deploys `contracts/src/Add.sol` on the anvil chain and sends `add(3, 5)`.
+That one transaction encrypts both numbers, adds them and allows the caller to read the
+result. host-listener turns the events into computations, tfhe-worker computes the sum,
+sns-worker uploads it; the demo follows the result handle from the receipt into the
+database, decrypts it with the test client key and prints `3 + 5 = 8 (on chain)`.
 
 ```bash
-coprocessor/demo/run.sh     # from the laptop against the cluster DB
-make demo-image             # build local/coprocessor-demo:dev, load into kind
+coprocessor/demo/run.sh     # from the laptop: forge build, port-forward anvil, cargo run
+make demo-image             # build local/coprocessor-demo:dev (forge stage + Rust), load into kind
 make demo                   # sync the coprocessor-demo app == run the Job, print its log
 ```
 
