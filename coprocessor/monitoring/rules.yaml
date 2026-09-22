@@ -1,0 +1,59 @@
+# Alerts for the two failure modes exercised by hand (C1: sns-worker down, C2: S3 unreachable).
+# Metric sources: pbs_completion from the sql-exporter, the rest from the workers themselves.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: coprocessor
+  namespace: coproc
+spec:
+  groups:
+    - name: coprocessor
+      rules:
+        - alert: CoprocessorSnsBacklog
+          expr: pbs_completion{status="uncompleted"} > 0
+          for: 1m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} handles waiting for SnS"
+            description: "pbs_computations has had unprocessed rows for 1m. Check the sns-worker pod first."
+
+        - alert: CoprocessorUploadsStuck
+          # gauge disappears while the pod is down; WorkerDown covers that case
+          expr: max(coprocessor_sns_worker_uncomplete_aws_uploads_gauge) > 0
+          for: 2m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} ciphertexts converted but not uploaded"
+            description: "sns-worker finished SnS but S3 uploads are not completing. Check S3 credentials, endpoint and DNS."
+
+        - alert: CoprocessorUploadFailures
+          # a short burst right after a restart is normal; only sustained failures page
+          expr: sum(increase(coprocessor_sns_worker_aws_upload_failure_counter[2m])) > 0
+          for: 3m
+          labels: { severity: warning }
+          annotations:
+            summary: "sustained sns-worker upload failures"
+
+        - alert: CoprocessorComputationsStalled
+          expr: computations_completion{status="uncompleted"} > 0 and rate(computations_completion{status="completed"}[5m]) == 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} computations pending and nothing completing"
+            description: "Work is queued but tfhe-worker is not making progress. Check dependence_chain rows and the tfhe-worker pod."
+
+        - alert: CoprocessorCrashLoop
+          # seen in C2: an S3 partition exhausts the DB pool and the worker panics and restarts
+          expr: increase(kube_pod_container_status_restarts_total{namespace="coproc", container=~"coprocessor-.*"}[10m]) >= 2
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.container }} restarted {{ $value }} times in 10m"
+            description: "Look at the previous container log (kubectl logs --previous) for the panic."
+
+        - alert: CoprocessorWorkerDown
+          expr: up{job=~"coprocessor-.*"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.job }} metrics endpoint down"

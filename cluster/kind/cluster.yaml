@@ -1,0 +1,18 @@
+# kind cluster for local practice. One control-plane + one worker so that
+# node-level chaos (drain, kill) has something to act on.
+#   kind create cluster --name zama-practice --config cluster.yaml
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+name: zama-practice
+nodes:
+  - role: control-plane
+    extraPortMappings:
+      - containerPort: 30432   # postgres NodePort -> localhost:5432 for psql / seed
+        hostPort: 5432
+      - containerPort: 30900   # minio API
+        hostPort: 9000
+      - containerPort: 30901   # minio console
+        hostPort: 9001
+      - containerPort: 30300   # grafana (kube-prometheus-stack), later
+        hostPort: 3030
+  - role: worker

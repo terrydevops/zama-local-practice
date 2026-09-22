@@ -1,0 +1,24 @@
+# Chaos Mesh on kind (containerd). Dashboard without auth, practice only.
+chaosDaemon:
+  runtime: containerd
+  socketPath: /run/containerd/containerd.sock
+  resources:
+    requests: { cpu: 50m, memory: 64Mi }
+    limits:   { cpu: 500m, memory: 256Mi }
+controllerManager:
+  replicaCount: 1
+  leaderElection: { enabled: false }
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+dashboard:
+  create: true
+  securityMode: false
+  service:
+    type: NodePort
+    nodePort: 30333
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+dnsServer:
+  create: false

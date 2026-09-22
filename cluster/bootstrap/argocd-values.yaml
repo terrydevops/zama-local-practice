@@ -1,0 +1,52 @@
+# Argo CD for the practice cluster (chart: argo/argo-cd), installed by install.sh argocd.
+# Small footprint: no HA, no dex/SSO, no notifications. UI reachable via NodePort 30080.
+global:
+  domain: argocd.local
+configs:
+  params:
+    server.insecure: true          # plain HTTP inside kind
+  cm:
+    timeout.reconciliation: 60s    # practice: poll git every minute (default 3m)
+    users.anonymous.enabled: "true"   # practice only: read-only UI without login
+    # Health of Application resources, off by default since 1.8. Needed so that sync waves
+    # in the root app wait for the previous wave's Applications to be healthy.
+    resource.customizations.health.argoproj.io_Application: |
+      hs = {}
+      hs.status = "Progressing"
+      hs.message = ""
+      if obj.status ~= nil then
+        if obj.status.health ~= nil then
+          hs.status = obj.status.health.status
+          if obj.status.health.message ~= nil then
+            hs.message = obj.status.health.message
+          end
+        end
+      end
+      return hs
+  rbac:
+    policy.default: role:readonly
+server:
+  service:
+    type: NodePort
+    nodePortHttp: 30080
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+controller:
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+repoServer:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+applicationSet:
+  enabled: false
+notifications:
+  enabled: false
+dex:
+  enabled: false
+redis:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }

@@ -1,0 +1,25 @@
+[package]
+name = "coprocessor-demo"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone crate (outside the Zama workspace). Reuses host-listener to write the
+# events exactly like a real block would, and fhevm-engine-common to decrypt with
+# the test client key.
+[workspace]
+
+[[bin]]
+name = "coprocessor_demo"
+path = "src/main.rs"
+
+[dependencies]
+host-listener = { path = "../../../zama-ai-repos/fhevm/coprocessor/fhevm-engine/host-listener" }
+fhevm-engine-common = { path = "../../../zama-ai-repos/fhevm/coprocessor/fhevm-engine/fhevm-engine-common" }
+alloy = { version = "2.2.0", default-features = false, features = ["essentials", "std"] }
+anyhow = "1.0.98"
+hex = "0.4.3"
+rand = "0.9.1"
+sqlx = { version = "0.8.6", default-features = false, features = ["macros", "runtime-tokio", "tls-rustls-aws-lc-rs", "time", "postgres", "bigdecimal"] }
+tfhe = { version = "=1.8.1", features = ["boolean", "shortint", "integer", "zk-pok", "experimental-force_fft_algo_dif4"] }
+tokio = { version = "1.45.0", features = ["full"] }

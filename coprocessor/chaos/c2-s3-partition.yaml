@@ -1,0 +1,24 @@
+# C2: the sns-worker cannot reach minio for 5 minutes. SnS conversion continues,
+# pbs_computations drains, but ciphertext_digest rows stay half-filled and S3 does not grow.
+# Expect CoprocessorUploadsStuck to fire after 3 minutes; uploads catch up when the
+# partition lifts.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: NetworkChaos
+metadata:
+  name: c2-s3-partition
+  namespace: coproc
+spec:
+  action: partition
+  mode: all
+  duration: 5m
+  selector:
+    namespaces: [coproc]
+    labelSelectors:
+      app: coprocessor-sns-worker
+  direction: to
+  target:
+    mode: all
+    selector:
+      namespaces: [infra]
+      labelSelectors:
+        app: minio

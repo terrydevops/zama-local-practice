@@ -1,0 +1,14 @@
+# Values for the upstream chart charts/coprocessor-sql-exporter (fhevm repo).
+# Only change from upstream defaults: the exporter image comes from Docker Hub
+# instead of hub.zama.org, same version. Queries are the chart's own config/queries.yml.
+sql-exporter:
+  image:
+    repository: burningalchemist/sql_exporter
+    tag: "0.23.0"
+  imagePullSecrets: []
+  serviceMonitor:
+    enabled: true
+    interval: 30s
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 128Mi }

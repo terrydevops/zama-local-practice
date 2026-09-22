@@ -1,0 +1,3 @@
+ignored:
+  - DL3006   # FROM ${RUST_IMAGE}: the tag is in the ARG default
+  - DL3008   # apt packages on a rolling debian base are not version-pinned here

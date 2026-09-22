@@ -1,0 +1,67 @@
+# Stand-in for S3. The setup job creates the per-coprocessor bucket and makes it public,
+# the same shape fhevm-cli's minio-setup uses.
+# Credentials: Secret minio-credentials from cluster/bootstrap/secrets.sh.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: minio
+  namespace: infra
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: minio } }
+  template:
+    metadata: { labels: { app: minio } }
+    spec:
+      containers:
+        - name: minio
+          image: quay.io/minio/minio
+          args: ["server", "/data", "--console-address", ":9001"]
+          envFrom: [ { secretRef: { name: minio-credentials } } ]
+          env:
+            # accept <bucket>.<host> (virtual-host style) requests, which the AWS SDK uses
+            - { name: MINIO_DOMAIN, value: minio.infra.svc.cluster.local }
+          ports:
+            - { containerPort: 9000 }
+            - { containerPort: 9001 }
+          readinessProbe:
+            httpGet: { path: /minio/health/ready, port: 9000 }
+            periodSeconds: 3
+          volumeMounts: [ { name: data, mountPath: /data } ]
+      volumes: [ { name: data, emptyDir: {} } ]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: minio
+  namespace: infra
+spec:
+  type: NodePort
+  selector: { app: minio }
+  ports:
+    - { name: api, port: 9000, targetPort: 9000, nodePort: 30900 }
+    - { name: console, port: 9001, targetPort: 9001, nodePort: 30901 }
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: minio-setup
+  namespace: infra
+spec:
+  backoffLimit: 10
+  template:
+    spec:
+      restartPolicy: OnFailure
+      containers:
+        - name: mc
+          image: quay.io/minio/mc
+          envFrom: [ { secretRef: { name: minio-credentials } } ]
+          command: ["/bin/sh", "-c"]
+          args:
+            - |
+              set -e
+              until mc alias set local http://minio.infra.svc:9000 "$MINIO_ROOT_USER" "$MINIO_ROOT_PASSWORD"; do sleep 2; done
+              mc admin user add local "$ACCESS_KEY" "$SECRET_KEY" || true
+              mc admin policy attach local readwrite --user "$ACCESS_KEY" || true
+              mc mb --ignore-existing local/coproc-0
+              mc anonymous set public local/coproc-0
+              echo done

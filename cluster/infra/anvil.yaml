@@ -1,0 +1,67 @@
+# Local host chain: anvil with the same flags as the upstream test-suite host-node (1s blocks,
+# chain id 12345, 120 funded accounts, one slot per epoch so blocks finalize at once).
+# State is written to a PVC every 10s and reloaded on start, so contract addresses and the
+# block height the host-listener has recorded stay valid across pod restarts.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anvil-config
+  namespace: infra
+data:
+  CHAIN_ID: "12345"
+  # Test mnemonic from the upstream test-suite (templates/env/.env.host-node). The host
+  # contracts deployer key is derived from it, so it has to be this one.
+  MNEMONIC: "adapt mosquito move limb mobile illegal tree voyage juice mosquito burger raise father hope layer"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anvil-state
+  namespace: infra
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anvil
+  namespace: infra
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # one writer of the state file at a time
+  selector: { matchLabels: { app: anvil } }
+  template:
+    metadata: { labels: { app: anvil } }
+    spec:
+      securityContext: { fsGroup: 1000 }   # the image runs as uid 1000 (foundry)
+      containers:
+        - name: anvil
+          image: ghcr.io/foundry-rs/foundry:v1.3.5
+          envFrom: [ { configMapRef: { name: anvil-config } } ]
+          command: ["sh", "-c"]
+          args:
+            - exec anvil --block-time 1 --host 0.0.0.0 --port 8545 --chain-id "$CHAIN_ID"
+              --accounts 120 --mnemonic "$MNEMONIC" --slots-in-an-epoch 1
+              --state /data/anvil.json --state-interval 10
+          ports: [ { containerPort: 8545 } ]
+          volumeMounts: [ { name: state, mountPath: /data } ]
+          readinessProbe:
+            tcpSocket: { port: 8545 }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: "1", memory: 1Gi }
+      volumes:
+        - name: state
+          persistentVolumeClaim: { claimName: anvil-state }
+---
+# ClusterIP only; from the laptop use kubectl port-forward svc/anvil -n infra 8545:8545.
+apiVersion: v1
+kind: Service
+metadata:
+  name: anvil
+  namespace: infra
+spec:
+  selector: { app: anvil }
+  ports: [ { port: 8545, targetPort: 8545 } ]

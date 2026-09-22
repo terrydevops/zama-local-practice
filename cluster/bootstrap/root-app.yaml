@@ -1,0 +1,24 @@
+# The only Application applied by hand (install.sh root). It renders the AppProject and every
+# other Application from cluster/apps/values.yaml through the argocd-apps chart, so adding a
+# workload to the cluster is one entry in that file.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: root
+  namespace: argocd
+  finalizers: [resources-finalizer.argocd.argoproj.io]
+spec:
+  project: default
+  sources:
+    - repoURL: https://argoproj.github.io/argo-helm
+      chart: argocd-apps
+      targetRevision: 2.0.5
+      helm:
+        releaseName: root
+        valueFiles: [$values/cluster/apps/values.yaml]
+    - repoURL: git@github.com:terrydevops/zama-local-practice.git
+      targetRevision: master
+      ref: values
+  destination: { server: https://kubernetes.default.svc, namespace: argocd }
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }

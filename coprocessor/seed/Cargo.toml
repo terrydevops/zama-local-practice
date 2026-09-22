@@ -1,0 +1,19 @@
+[package]
+name = "seed-local-db"
+version = "0.1.0"
+edition = "2021"
+publish = false
+
+# Standalone crate (not part of the Zama workspace) that reuses the repo's
+# test-harness to migrate a fresh Postgres and import the test FHE keys.
+[workspace]
+
+[[bin]]
+name = "seed_local_db"
+path = "seed_local_db.rs"
+
+[dependencies]
+test-harness = { path = "../../../zama-ai-repos/fhevm/coprocessor/fhevm-engine/test-harness" }
+fhevm-engine-common = { path = "../../../zama-ai-repos/fhevm/coprocessor/fhevm-engine/fhevm-engine-common" }
+sqlx = { version = "0.8.6", default-features = false, features = ["runtime-tokio", "tls-rustls", "postgres", "migrate", "macros"] }
+tokio = { version = "1.45.0", features = ["full"] }

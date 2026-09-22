@@ -1,0 +1,69 @@
+# kube-prometheus-stack for the practice cluster: small footprint, pick up every
+# ServiceMonitor / PrometheusRule in the cluster regardless of labels.
+fullnameOverride: monitoring
+
+prometheus:
+  prometheusSpec:
+    retention: 2d
+    retentionSize: 2GB
+    scrapeInterval: 15s
+    evaluationInterval: 15s
+    serviceMonitorSelectorNilUsesHelmValues: false
+    podMonitorSelectorNilUsesHelmValues: false
+    ruleSelectorNilUsesHelmValues: false
+    probeSelectorNilUsesHelmValues: false
+    resources:
+      requests: { cpu: 100m, memory: 512Mi }
+      limits:   { cpu: "1", memory: 1536Mi }
+    storageSpec:
+      volumeClaimTemplate:
+        spec:
+          resources: { requests: { storage: 4Gi } }
+
+alertmanager:
+  alertmanagerSpec:
+    resources:
+      requests: { cpu: 20m, memory: 64Mi }
+      limits:   { cpu: 200m, memory: 256Mi }
+
+grafana:
+  admin:                      # Secret from cluster/bootstrap/secrets.sh
+    existingSecret: grafana-admin
+    userKey: admin-user
+    passwordKey: admin-password
+  service:
+    type: NodePort
+    nodePort: 30300      # kind maps this to localhost:3030
+  sidecar:
+    dashboards:
+      enabled: true
+      label: grafana_dashboard
+      searchNamespace: ALL
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+  grafana.ini:
+    analytics: { check_for_updates: false, reporting_enabled: false }
+    # practice only: anyone on the laptop can view dashboards without logging in
+    auth.anonymous: { enabled: true, org_role: Viewer }
+
+# kind has no kube-scheduler/controller-manager metrics endpoints worth scraping
+kubeControllerManager: { enabled: false }
+kubeScheduler: { enabled: false }
+kubeEtcd: { enabled: false }
+kubeProxy: { enabled: false }
+
+prometheusOperator:
+  resources:
+    requests: { cpu: 50m, memory: 128Mi }
+    limits:   { cpu: 500m, memory: 512Mi }
+
+kube-state-metrics:
+  resources:
+    requests: { cpu: 20m, memory: 64Mi }
+    limits:   { cpu: 200m, memory: 256Mi }
+
+prometheus-node-exporter:
+  resources:
+    requests: { cpu: 20m, memory: 32Mi }
+    limits:   { cpu: 200m, memory: 128Mi }

@@ -1,0 +1,25 @@
+#!/bin/bash
+# Build local/coprocessor-demo:dev and optionally load it into kind.
+#   ./build.sh [load]
+set -euo pipefail
+HERE=$(cd "$(dirname "$0")" && pwd)
+ROOT=$(cd "$HERE/../.." && pwd)            # zama-local-practice
+PARENT=$(cd "$ROOT/.." && pwd)             # holds zama-local-practice and zama-ai-repos
+FHEVM_DIR=${FHEVM_DIR:-$PARENT/zama-ai-repos/fhevm}
+TAG=${TAG:-dev}
+CLUSTER=${KIND_CLUSTER:-zama-practice}
+[ "$FHEVM_DIR" = "$PARENT/zama-ai-repos/fhevm" ] || { echo "fhevm checkout must be at $PARENT/zama-ai-repos/fhevm for the image build" >&2; exit 1; }
+
+export DOCKER_BUILDKIT=1
+CTX=$(mktemp -d); trap 'rm -rf "$CTX"' EXIT
+tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git --exclude=fhevm-keys --exclude=logs \
+    zama-ai-repos/fhevm/coprocessor/proto zama-ai-repos/fhevm/coprocessor/fhevm-engine \
+    zama-ai-repos/fhevm/listener zama-ai-repos/fhevm/shared \
+    zama-ai-repos/fhevm/host-contracts/rust_bindings zama-ai-repos/fhevm/gateway-contracts/rust_bindings \
+    zama-local-practice/coprocessor/demo > "$CTX/ctx.tar"
+tar -C "$HERE" -r -f "$CTX/ctx.tar" Dockerfile
+docker build -f Dockerfile -t "local/coprocessor-demo:$TAG" - < "$CTX/ctx.tar"
+docker images 'local/coprocessor-demo' --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
+if [ "${1:-}" = "load" ]; then
+  kind load docker-image "local/coprocessor-demo:$TAG" --name "$CLUSTER"
+fi

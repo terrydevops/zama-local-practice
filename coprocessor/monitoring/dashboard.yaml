@@ -1,0 +1,236 @@
+# Grafana dashboard, picked up by the kube-prometheus-stack sidecar (label grafana_dashboard).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: coprocessor-dashboard
+  namespace: coproc
+  labels:
+    grafana_dashboard: "1"
+data:
+  coprocessor.json: |
+    {
+      "title": "Coprocessor pipeline",
+      "uid": "coprocessor-pipeline",
+      "schemaVersion": 39,
+      "refresh": "10s",
+      "time": {
+        "from": "now-30m",
+        "to": "now"
+      },
+      "panels": [
+        {
+          "type": "stat",
+          "title": "computations pending",
+          "gridPos": {
+            "x": 0,
+            "y": 0,
+            "w": 5,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "computations_completion{status=\"uncompleted\"}"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "SnS backlog (pbs)",
+          "gridPos": {
+            "x": 5,
+            "y": 0,
+            "w": 5,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "pbs_completion{status=\"uncompleted\"}"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "uploads incomplete",
+          "gridPos": {
+            "x": 10,
+            "y": 0,
+            "w": 5,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "max(coprocessor_sns_worker_uncomplete_aws_uploads_gauge)"
+            }
+          ]
+        },
+        {
+          "type": "stat",
+          "title": "digests unsent",
+          "gridPos": {
+            "x": 15,
+            "y": 0,
+            "w": 4,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "ciphertext_txn_sent{status=\"txn_unsent\"}"
+            }
+          ],
+          "fieldConfig": {
+            "defaults": {
+              "color": {
+                "mode": "fixed",
+                "fixedColor": "gray"
+              }
+            }
+          }
+        },
+        {
+          "type": "table",
+          "title": "firing alerts",
+          "gridPos": {
+            "x": 19,
+            "y": 0,
+            "w": 5,
+            "h": 4
+          },
+          "targets": [
+            {
+              "expr": "ALERTS{alertstate=\"firing\",alertname=~\"Coprocessor.*\"}",
+              "format": "table",
+              "instant": true
+            }
+          ],
+          "transformations": [
+            {
+              "id": "organize",
+              "options": {
+                "includeByName": {
+                  "alertname": true,
+                  "severity": true
+                }
+              }
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "pipeline backlog",
+          "gridPos": {
+            "x": 0,
+            "y": 4,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "computations_completion{status=\"uncompleted\"}",
+              "legendFormat": "computations pending"
+            },
+            {
+              "expr": "pbs_completion{status=\"uncompleted\"}",
+              "legendFormat": "pbs pending"
+            },
+            {
+              "expr": "max(coprocessor_sns_worker_uncomplete_aws_uploads_gauge)",
+              "legendFormat": "uploads incomplete"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "throughput",
+          "gridPos": {
+            "x": 12,
+            "y": 4,
+            "w": 12,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "rate(computations_completion{status=\"completed\"}[2m])",
+              "legendFormat": "computations/s"
+            },
+            {
+              "expr": "sum(rate(coprocessor_sns_worker_aws_upload_success_counter[2m]))",
+              "legendFormat": "uploads/s"
+            },
+            {
+              "expr": "sum(rate(coprocessor_sns_worker_aws_upload_failure_counter[2m]))",
+              "legendFormat": "upload failures/s"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "SnS op latency (avg over 2m)",
+          "gridPos": {
+            "x": 0,
+            "y": 12,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "s"
+            }
+          },
+          "targets": [
+            {
+              "expr": "sum(rate(coprocessor_sns_op_latency_seconds_sum[2m])) / sum(rate(coprocessor_sns_op_latency_seconds_count[2m]))",
+              "legendFormat": "avg"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "tfhe-worker",
+          "gridPos": {
+            "x": 8,
+            "y": 12,
+            "w": 8,
+            "h": 8
+          },
+          "targets": [
+            {
+              "expr": "rate(coprocessor_work_items_processed[2m])",
+              "legendFormat": "items processed/s"
+            },
+            {
+              "expr": "coprocessor_worker_slow_lane_chains",
+              "legendFormat": "slow lane chains"
+            },
+            {
+              "expr": "rate(coprocessor_worker_errors[2m])",
+              "legendFormat": "errors/s"
+            },
+            {
+              "expr": "histogram_quantile(0.95, sum(rate(coprocessor_fhe_batch_latency_seconds_bucket[2m])) by (le))",
+              "legendFormat": "fhe batch p95 (s)"
+            }
+          ]
+        },
+        {
+          "type": "timeseries",
+          "title": "worker memory",
+          "gridPos": {
+            "x": 16,
+            "y": 12,
+            "w": 8,
+            "h": 8
+          },
+          "fieldConfig": {
+            "defaults": {
+              "unit": "bytes"
+            }
+          },
+          "targets": [
+            {
+              "expr": "max by (container) (container_memory_working_set_bytes{namespace=\"coproc\", container=~\"coprocessor-.*\"})",
+              "legendFormat": "{{ container }}"
+            }
+          ]
+        }
+      ]
+    }

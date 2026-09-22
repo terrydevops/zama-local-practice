@@ -1,0 +1,146 @@
+# Every Application in the cluster, rendered by the root app (cluster/bootstrap/root-app.yaml)
+# through the argocd-apps chart. One entry per workload; the key is the Application name.
+#
+# Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
+# belongs to one system carries its prefix (coprocessor-*).
+# Waves: 0 infra -> 1 monitoring (CRDs) -> 2 workers, exporter -> 3 rules, dashboard, chaos
+# -> 4 demo. Application health checks are on (argocd-values.yaml) so a wave waits for the
+# previous one to be healthy.
+# Every child carries the resources finalizer: removing or renaming an entry deletes the
+# Application and everything it deployed.
+# The two upstream chart sources pin the commit in .fhevm-ref; CI checks they match.
+
+projects:
+  practice:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "-1" }
+    description: Zama local practice
+    sourceRepos: ["*"]
+    destinations: [{ namespace: "*", server: https://kubernetes.default.svc }]
+    clusterResourceWhitelist: [{ group: "*", kind: "*" }]
+
+applications:
+  # Postgres, minio and the anvil host chain: stand-ins for RDS, S3 and the L1.
+  infra:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "0" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    source:
+      repoURL: git@github.com:terrydevops/zama-local-practice.git
+      targetRevision: master
+      path: cluster/infra
+    destination: { server: https://kubernetes.default.svc, namespace: infra }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true]
+
+  monitoring:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://prometheus-community.github.io/helm-charts
+        chart: kube-prometheus-stack
+        targetRevision: 91.4.1
+        helm:
+          releaseName: monitoring
+          valueFiles: [$values/cluster/platform/monitoring/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true, ServerSideApply=true]
+
+  # Workers via the upstream chart, values from this repo.
+  coprocessor:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/coprocessor
+        helm:
+          releaseName: coprocessor
+          valueFiles: [$values/coprocessor/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true]
+
+  # Postgres table counters for the dashboard, upstream chart with a public image.
+  coprocessor-sql-exporter:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/coprocessor-sql-exporter
+        helm:
+          releaseName: coprocessor-sql-exporter
+          valueFiles: [$values/coprocessor/sql-exporter/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
+  # Alert rules and the Grafana dashboard for the pipeline.
+  coprocessor-monitoring:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    source:
+      repoURL: git@github.com:terrydevops/zama-local-practice.git
+      targetRevision: master
+      path: coprocessor/monitoring
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
+  # Chaos Mesh. Experiments live in coprocessor/chaos/ and are applied by hand: they are
+  # one-shot, Argo CD would keep re-creating them.
+  chaos-mesh:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://charts.chaos-mesh.org
+        chart: chaos-mesh
+        targetRevision: 2.8.4
+        helm:
+          releaseName: chaos-mesh
+          valueFiles: [$values/cluster/platform/chaos-mesh/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: chaos-mesh }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true, ServerSideApply=true]
+
+  # End-to-end check as a Sync-hook Job. Manual sync only: sync == run the check (make demo).
+  coprocessor-demo:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    source:
+      repoURL: git@github.com:terrydevops/zama-local-practice.git
+      targetRevision: master
+      path: coprocessor/demo/k8s
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy: {}

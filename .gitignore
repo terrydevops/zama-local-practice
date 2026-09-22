@@ -1,0 +1,7 @@
+coprocessor/scripts/logs/
+coprocessor/seed/target/
+*.log
+.DS_Store
+cluster/bootstrap/.deploy-key
+cluster/bootstrap/.deploy-key.pub
+cluster/bootstrap/secrets/

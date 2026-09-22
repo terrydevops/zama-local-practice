@@ -1,0 +1,66 @@
+name: ci
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: shellcheck
+        run: |
+          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
+          shellcheck $(git ls-files '*.sh')
+
+  dockerfiles:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: coprocessor/images/Dockerfile
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
+          dockerfile: coprocessor/demo/Dockerfile
+
+  manifests:
+    runs-on: ubuntu-latest
+    env:
+      CRDS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
+    steps:
+      - uses: actions/checkout@v4
+      - name: fhevm ref is pinned on both chart sources
+        run: make check-ref
+      - name: fhevm charts at the pinned commit
+        run: |
+          ref=$(cat .fhevm-ref)
+          git clone --filter=blob:none --no-checkout https://github.com/zama-ai/fhevm.git /tmp/fhevm
+          git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter
+          git -C /tmp/fhevm checkout "$ref"
+      - uses: azure/setup-helm@v4
+      - name: kubeconform
+        run: |
+          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+      - name: render + validate the Argo CD applications
+        run: |
+          helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
+          helm template root argo/argocd-apps --version 2.0.5 -n argocd -f cluster/apps/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+      - name: render + validate the coprocessor chart
+        run: |
+          helm template coprocessor /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+      - name: render + validate the sql-exporter chart
+        run: |
+          helm dependency update /tmp/fhevm/charts/coprocessor-sql-exporter >/dev/null
+          helm template coprocessor-sql-exporter /tmp/fhevm/charts/coprocessor-sql-exporter -n monitoring -f coprocessor/sql-exporter/values.yaml \
+            | kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS"
+      - name: validate plain manifests
+        run: |
+          kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS" \
+            cluster/bootstrap/root-app.yaml \
+            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml \
+            coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml \
+            coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/job.yaml

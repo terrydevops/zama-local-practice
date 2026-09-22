@@ -1,0 +1,136 @@
+# Practice values for the upstream chart fhevm/charts/coprocessor (0.13.x).
+# Same shape as coprocessor-operator/helm-values/*/values-coproc-workers-*.yaml:
+# only the three workers are enabled; listeners, tx-sender, db-migration and the
+# blue-green controllers are off. Differences from testnet are marked "practice:".
+#
+# Deployed by Argo CD (coprocessor in cluster/apps/values.yaml) from the chart at .fhevm-ref.
+# Render locally: coprocessor/scripts/deploy.sh render
+
+commonConfig:
+  # practice: plain password auth to the in-cluster postgres (testnet: RDS via secret/configmap)
+  databaseUser:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }
+  databasePassword:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: password } }
+  databaseEndpoint:
+    value: "postgres.infra.svc.cluster.local:5432"
+  databaseUrl: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_ENDPOINT)/coprocessor"
+  # practice: keys were imported as compressed-xof (same as the e2e stack), so no legacy server key
+  forceLegacyServerKey: false
+  tracing:
+    enabled: false   # practice: no OTLP collector yet
+
+chains: []           # no host chain listeners; the stress generator writes computations directly
+
+# ---------------------------------------------------------------- workers
+tfheWorker:
+  enabled: true
+  image:
+    name: local/tfhe-worker        # practice: built by coprocessor/images/build.sh
+    tag: dev
+  replicas: 1
+  extraArgs:
+    - --run-bg-worker
+    - --worker-polling-interval-ms=1000
+    - --work-items-batch-size=20
+    - --dependence-chains-per-batch=20
+    - --key-cache-size=32
+    - --coprocessor-fhe-threads=6      # practice: laptop (testnet: 64)
+    - --tokio-threads=4
+    - --pg-pool-max-connections=10
+    - --log-level=INFO
+    - --dcid-ttl-sec=120
+    - --dcid-timeslice-sec=240
+    - --processed-dcid-ttl-sec=172800
+    - --dcid-cleanup-interval-sec=3600
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: "1", memory: 1Gi }
+    limits:   { cpu: "6", memory: 6Gi }
+
+zkProofWorker:
+  enabled: true
+  image:
+    name: local/zkproof-worker
+    tag: dev
+  replicas: 1
+  extraArgs:
+    - --pg-listen-channel=event_zkpok_new_work
+    - --pg-notify-channel=event_zkpok_computed
+    - --pg-polling-interval=5
+    - --pg-pool-connections=5
+    - --pg-timeout=15s
+    - --worker-thread-count=4
+    - --log-level=INFO
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 500m, memory: 512Mi }
+    limits:   { cpu: "4", memory: 16Gi }
+
+snsWorker:
+  enabled: true
+  image:
+    name: local/sns-worker
+    tag: dev
+  replicas: 1
+  config:
+    s3BucketName:
+      value: coproc-0
+    s3Migration:
+      mode: "no"
+  # practice: static minio credentials via env (testnet: IRSA on the sns-worker ServiceAccount)
+  env:
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom: { secretKeyRef: { name: coprocessor-s3, key: access_key } }
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom: { secretKeyRef: { name: coprocessor-s3, key: secret_key } }
+    - name: AWS_ENDPOINT_URL
+      value: "http://minio.infra.svc.cluster.local:9000"
+    - name: AWS_REGION
+      value: eu-west-1
+  wallet:
+    enabled: true
+    awsKms: { enabled: false }
+    secret:
+      # practice: throwaway dev key (anvil account #0). testnet: AWS KMS or a real Secret.
+      value: "0x<anvil-account-0-key>"
+  extraArgs:
+    - --pg-listen-channels
+    - event_pbs_computations
+    - event_ciphertext_computed
+    - --pg-notify-channel
+    - event_ciphertext128_computed
+    - --work-items-batch-size=20
+    - --pg-polling-interval=1
+    - --pg-pool-connections=10
+    - --pg-timeout=15s
+    - --s3-max-concurrent-uploads=20
+    - --s3-max-retries-per-upload=100
+    - --s3-max-backoff=10s
+    - --s3-max-retries-timeout=120s
+    - --s3-recheck-duration=2s
+    - --s3-regular-recheck-duration=120s
+    - --enable-compression
+    - --gc-batch-size=80
+    - --cleanup-interval=1000000s
+    - --liveness-threshold=70s
+    - --gauge-update-interval-secs=15   # exports uncomplete_tasks / uncomplete_aws_uploads gauges
+    - --log-level=INFO
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 500m, memory: 2Gi }
+    limits:   { cpu: "4", memory: 4Gi }
+
+# ---------------------------------------------------------------- everything else off
+dbMigration:      { enabled: false }   # practice: seed/seed.sh runs migrations from the laptop
+hostListenerShared:            { enabled: false }
+hostListenerPollerShared:      { enabled: false }
+hostListenerCatchupOnlyShared: { enabled: false }
+hostListenerConsumerShared:    { enabled: false }
+gwListener:        { enabled: false }
+txSender:          { enabled: false }
+upgradeController: { enabled: false }
+consensusDetector: { enabled: false }

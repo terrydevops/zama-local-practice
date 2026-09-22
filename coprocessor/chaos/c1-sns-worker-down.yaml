@@ -1,0 +1,16 @@
+# C1: the sns-worker is down for 4 minutes. Computations keep completing,
+# pbs_computations piles up, nothing reaches S3. Expect CoprocessorSnsBacklog to fire
+# after 3 minutes and clear a few minutes after the experiment ends.
+apiVersion: chaos-mesh.org/v1alpha1
+kind: PodChaos
+metadata:
+  name: c1-sns-worker-down
+  namespace: coproc
+spec:
+  action: pod-failure
+  mode: all
+  duration: 4m
+  selector:
+    namespaces: [coproc]
+    labelSelectors:
+      app: coprocessor-sns-worker

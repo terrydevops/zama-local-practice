@@ -1,0 +1,42 @@
+# Stand-in for RDS. Single pod, emptyDir (practice data is disposable).
+# Credentials: Secret postgres-credentials from cluster/bootstrap/secrets.sh.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: infra
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: postgres
+  namespace: infra
+spec:
+  replicas: 1
+  selector: { matchLabels: { app: postgres } }
+  template:
+    metadata: { labels: { app: postgres } }
+    spec:
+      containers:
+        - name: postgres
+          image: postgres:17
+          envFrom: [ { secretRef: { name: postgres-credentials } } ]
+          args: ["-c", "max_connections=200"]
+          ports: [ { containerPort: 5432 } ]
+          readinessProbe:
+            exec: { command: ["pg_isready", "-U", "postgres"] }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: "500m", memory: "1Gi" }
+            limits: { memory: "4Gi" }
+          volumeMounts: [ { name: data, mountPath: /var/lib/postgresql/data } ]
+      volumes: [ { name: data, emptyDir: {} } ]
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: postgres
+  namespace: infra
+spec:
+  type: NodePort
+  selector: { app: postgres }
+  ports: [ { port: 5432, targetPort: 5432, nodePort: 30432 } ]
