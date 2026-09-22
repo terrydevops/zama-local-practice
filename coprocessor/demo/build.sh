@@ -18,7 +18,8 @@ tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git --exc
     zama-ai-repos/fhevm/listener zama-ai-repos/fhevm/shared \
     zama-ai-repos/fhevm/host-contracts/rust_bindings zama-ai-repos/fhevm/gateway-contracts/rust_bindings \
     zama-ai-repos/fhevm/library-solidity/lib zama-ai-repos/fhevm/library-solidity/config \
-    zama-ai-repos/fhevm/host-contracts/lib zama-ai-repos/fhevm/host-contracts/examples/EncryptedERC20.sol \
+    zama-ai-repos/fhevm/host-contracts/lib zama-ai-repos/fhevm/host-contracts/contracts/shared/FheType.sol \
+    zama-ai-repos/fhevm/host-contracts/examples/EncryptedERC20.sol \
     zama-local-practice/coprocessor/demo > "$CTX/ctx.tar"
 # the npm dependencies the contracts import (node_modules is excluded above)
 tar -C "$PARENT" -r -f "$CTX/ctx.tar" zama-ai-repos/fhevm/library-solidity/node_modules/encrypted-types \

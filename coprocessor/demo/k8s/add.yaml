@@ -8,6 +8,7 @@ metadata:
   namespace: coproc
   annotations:
     argocd.argoproj.io/hook: Sync
+    argocd.argoproj.io/sync-wave: "0"   # hooks run one wave at a time: same sender account, so no nonce race
     argocd.argoproj.io/hook-delete-policy: BeforeHookCreation
 spec:
   backoffLimit: 0

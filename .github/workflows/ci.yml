@@ -70,4 +70,4 @@ jobs:
             cluster/bootstrap/root-app.yaml \
             cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml \
             coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml \
-            coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/job.yaml
+            coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/add.yaml coprocessor/demo/k8s/transfer.yaml
