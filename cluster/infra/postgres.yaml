@@ -1,4 +1,5 @@
-# Stand-in for RDS. Single pod, emptyDir (practice data is disposable).
+# Stand-in for RDS. Single pod, data on a PVC so pod restarts keep the keys and the chain
+# cursors. Memory limit sized for the three workers pulling the FHE keys at the same time.
 # Credentials: Secret postgres-credentials from cluster/bootstrap/secrets.sh.
 apiVersion: v1
 kind: Namespace
@@ -12,6 +13,7 @@ metadata:
   namespace: infra
 spec:
   replicas: 1
+  strategy: { type: Recreate }   # one writer on the volume
   selector: { matchLabels: { app: postgres } }
   template:
     metadata: { labels: { app: postgres } }
@@ -27,9 +29,20 @@ spec:
             periodSeconds: 3
           resources:
             requests: { cpu: "500m", memory: "1Gi" }
-            limits: { memory: "4Gi" }
+            limits: { memory: "8Gi" }
           volumeMounts: [ { name: data, mountPath: /var/lib/postgresql/data } ]
-      volumes: [ { name: data, emptyDir: {} } ]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: postgres-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: postgres-data
+  namespace: infra
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 5Gi } }
 ---
 apiVersion: v1
 kind: Service
