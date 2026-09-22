@@ -66,7 +66,7 @@ make up        # kind cluster, images, generated secrets + CoreDNS, Argo CD + de
 make job       # 20 ERC20 transfers through the pipeline
 make watch     # counters
 make demo      # run the end-to-end check as an Argo CD sync (writes to the DB directly)
-make smoke     # one trivialEncrypt on the anvil chain through host-listener and the workers
+make smoke     # one trivialEncrypt on the anvil chain, followed into the DB and tfhe-worker
 make down
 ```
 
@@ -99,6 +99,9 @@ the KMS, which this setup does not have.
   3.5 GB. Limits below that get OOMKilled.
 - The S3 SDK addresses buckets as `<bucket>.<host>`; minio in-cluster needs the CoreDNS rewrite
   (with `answer auto`, otherwise glibc rejects the reply).
+- Only outputs that a contract allows (ACL.allow in the same transaction) get computed and
+  uploaded; the listener inserts everything else as already completed. `make smoke` therefore
+  proves chain -> listener -> worker, not an upload. An on-chain add with allow is the next step.
 - The host chain is anvil with the upstream test-suite flags and mnemonic; the contracts deploy
   Job and `make smoke` use accounts derived from it. anvil keeps its state on a PVC. Without
   that a pod restart resets the chain to block 0 and the host-listener waits forever for a

@@ -1,7 +1,10 @@
 #!/bin/bash
-# One computation through the real path: a trivialEncrypt transaction on the anvil chain,
-# picked up by the host-listener, computed by tfhe-worker, uploaded by sns-worker.
-# Prints the tx, the host-listener log line, and the database rows as they appear.
+# One event through the real path: a trivialEncrypt transaction on the anvil chain, picked up
+# by the host-listener, written as a computation with its dependence chain, and processed by
+# tfhe-worker. A bare trivialEncrypt allows its output to nobody, and the listener inserts
+# such outputs as already completed (is_completed = NOT allowed), so no ciphertext is
+# materialized and nothing is uploaded: that needs a contract that calls ACL.allow in the same
+# transaction. Prints the tx, the listener log line and the rows as they appear.
 #   ./smoke.sh [value] [type]   default: 5 as euint8 (type 2)
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -39,10 +42,14 @@ done
 "$ROOT/coprocessor/scripts/watch.sh" sql "SELECT encode(output_handle,'hex') AS handle, dependence_chain_id IS NOT NULL AS has_chain, is_completed, is_error FROM computations ORDER BY created_at DESC LIMIT 1"
 kubectl --context "$CTX" -n coproc logs -l app.kubernetes.io/name=coprocessor-anvil-listener-host-listener --tail=200 | grep -i "$(echo "$tx" | cut -c3-12)" | head -2 || true
 
-echo "waiting for tfhe-worker and sns-worker"
-for _ in $(seq 1 60); do
-  row=$("$ROOT/coprocessor/scripts/watch.sh" sql "SELECT c.is_completed, (SELECT count(*) FROM ciphertext_digest d WHERE d.handle=c.output_handle) FROM computations c ORDER BY created_at DESC LIMIT 1" -tA)
-  [ "$row" = "t|1" ] && break; sleep 2
+echo "waiting for tfhe-worker to take and release the dependence chain"
+for _ in $(seq 1 30); do
+  st=$("$ROOT/coprocessor/scripts/watch.sh" sql "SELECT status FROM dependence_chain WHERE dependence_chain_id=decode('${tx#0x}','hex')" -tA)
+  [ "$st" = "processed" ] && break; sleep 2
 done
-"$ROOT/coprocessor/scripts/watch.sh" sql "SELECT encode(c.output_handle,'hex') AS handle, c.is_completed, length(ct.ciphertext) AS ct_bytes, encode(d.ciphertext,'hex') AS digest64 FROM computations c LEFT JOIN ciphertexts ct ON ct.handle=c.output_handle LEFT JOIN ciphertext_digest d ON d.handle=c.output_handle ORDER BY c.created_at DESC LIMIT 1"
-if [ "$row" = "t|1" ]; then echo "OK: chain -> host-listener -> tfhe-worker -> sns-worker"; else echo "pipeline did not finish in 120s" >&2; exit 1; fi
+"$ROOT/coprocessor/scripts/watch.sh" sql "SELECT encode(dependence_chain_id,'hex') AS dcid, status, block_height FROM dependence_chain WHERE dependence_chain_id=decode('${tx#0x}','hex')"
+if [ "$st" = "processed" ]; then
+  echo "OK: chain -> host-listener -> computations + dependence_chain -> tfhe-worker (output not allowed, so no ciphertext by design)"
+else
+  echo "tfhe-worker did not process the dependence chain in 60s" >&2; exit 1
+fi
