@@ -20,8 +20,6 @@ scDeploy:
     - { name: RPC_URL, value: "http://anvil-gateway.infra.svc.cluster.local:8545" }
     - name: DEPLOYER_PRIVATE_KEY
       valueFrom: { secretKeyRef: { name: gateway-deployer, key: deployer-private-key } }
-    - name: GATEWAY_CONFIG_ADDRESS
-      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: gateway_config.address } }
     - { name: NUM_HOST_CHAINS, value: "1" }
     - { name: HOST_CHAIN_CHAIN_ID_0, value: "12345" }
     - name: HOST_CHAIN_FHEVM_EXECUTOR_ADDRESS_0
@@ -32,7 +30,7 @@ scDeploy:
     - { name: HOST_CHAIN_WEBSITE_0, value: "https://anvil.invalid" }
   deployCommands:
     - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
-    - npx hardhat task:addHostChainsToGatewayConfig
+    - npx hardhat task:addHostChainsToGatewayConfig --use-internal-proxy-address true
     # what the chart's script turns into ConfigMap keys: a record of what was registered
     - printf 'HOST_CHAIN_0_ACL_ADDRESS=%s\nHOST_CHAIN_0_FHEVM_EXECUTOR_ADDRESS=%s\n' "$HOST_CHAIN_ACL_ADDRESS_0" "$HOST_CHAIN_FHEVM_EXECUTOR_ADDRESS_0" > addresses/.env.hostchains
   resources:
@@ -43,14 +41,15 @@ scDeploy:
     runAsUser: 10000
     fsGroup: 10001
 
+# Shares the gateway deploy's addresses volume: hardhat needs the generated GatewayAddresses.sol
+# there to compile, and the task can then read the proxy address from it. The two Jobs never
+# run at the same time, so a ReadWriteOnce claim is fine.
 persistence:
   enabled: true
   mountPath: /app/addresses
   volumeClaim:
-    name: gateway-host-chains-addresses
-    create: true
-    storageClassName: standard
-    storageCapacity: 100Mi
+    name: gateway-contracts-addresses
+    create: false
 
 scUpgrade:
   enabled: false
