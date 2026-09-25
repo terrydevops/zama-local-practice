@@ -26,6 +26,8 @@ data:
     [private_vault.storage.file]
     path = "/keys"
   kms-server.toml: |
+    # shape of core/service/config/default_centralized.toml at the pinned kms commit, with the
+    # public vault on S3 (minio) so the connector and the coprocessor can fetch the material
     [service]
     listen_address = "0.0.0.0"
     listen_port = 50051
@@ -35,13 +37,11 @@ data:
     [telemetry]
     tracing_service_name = "kms-centralized"
     metrics_bind_address = "0.0.0.0:9646"
+    enable_sys_metrics = true
 
     [aws]
     region = "eu-west-1"
     s3_endpoint = "http://minio.infra.svc.cluster.local:9000"
-
-    [public_vault]
-    storage_cache_size = 1000
 
     [public_vault.storage.s3]
     bucket = "kms-public"
@@ -49,6 +49,10 @@ data:
 
     [private_vault.storage.file]
     path = "/keys"
+
+    [backup_vault]
+    [backup_vault.storage.file]
+    path = "/keys/backup_vault"
 
     [rate_limiter_conf]
     bucket_size = 50000
