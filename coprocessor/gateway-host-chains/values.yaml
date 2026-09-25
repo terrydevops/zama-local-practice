@@ -1,0 +1,56 @@
+# Registers the host chain on the GatewayConfig contract, the last step of the contract
+# bring-up (upstream: gateway-add-host-chains). Same chart as the deploys; this Job deploys
+# nothing, it calls addHostChain with the addresses the host deploy wrote and records what it
+# registered in the ConfigMap gw-host-chains (plus the version stamp that makes it a no-op
+# on later syncs).
+#
+# Deployed by Argo CD (coprocessor-gateway-host-chains in cluster/apps/values.yaml) into coproc,
+# after both contract Jobs.
+
+scDeploy:
+  enabled: true
+  preventRedeployment: true
+  image:
+    name: local/gateway-contracts
+    tag: dev
+  configmap:
+    name: gw-host-chains
+  env:
+    - { name: HARDHAT_NETWORK, value: staging }
+    - { name: RPC_URL, value: "http://anvil-gateway.infra.svc.cluster.local:8545" }
+    - name: DEPLOYER_PRIVATE_KEY
+      valueFrom: { secretKeyRef: { name: gateway-deployer, key: deployer-private-key } }
+    - name: GATEWAY_CONFIG_ADDRESS
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: gateway_config.address } }
+    - { name: NUM_HOST_CHAINS, value: "1" }
+    - { name: HOST_CHAIN_CHAIN_ID_0, value: "12345" }
+    - name: HOST_CHAIN_FHEVM_EXECUTOR_ADDRESS_0
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: fhevm_executor.address } }
+    - name: HOST_CHAIN_ACL_ADDRESS_0
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: acl.address } }
+    - { name: HOST_CHAIN_NAME_0, value: "anvil" }
+    - { name: HOST_CHAIN_WEBSITE_0, value: "https://anvil.invalid" }
+  deployCommands:
+    - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
+    - npx hardhat task:addHostChainsToGatewayConfig
+    # what the chart's script turns into ConfigMap keys: a record of what was registered
+    - printf 'HOST_CHAIN_0_ACL_ADDRESS=%s\nHOST_CHAIN_0_FHEVM_EXECUTOR_ADDRESS=%s\n' "$HOST_CHAIN_ACL_ADDRESS_0" "$HOST_CHAIN_FHEVM_EXECUTOR_ADDRESS_0" > addresses/.env.hostchains
+  resources:
+    requests: { cpu: 200m, memory: 512Mi }
+    limits:   { cpu: "1", memory: 2Gi }
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10000
+    fsGroup: 10001
+
+persistence:
+  enabled: true
+  mountPath: /app/addresses
+  volumeClaim:
+    name: gateway-host-chains-addresses
+    create: true
+    storageClassName: standard
+    storageCapacity: 100Mi
+
+scUpgrade:
+  enabled: false

@@ -6,7 +6,8 @@
 # the deployer key comes from the generated Secret host-chain-deployer.
 #
 # Deployed by Argo CD (coprocessor-host-contracts in cluster/apps/values.yaml) into the
-# coproc namespace, next to the listener that reads the ConfigMap.
+# coproc namespace, next to the listener that reads the ConfigMap, one wave after the gateway
+# contracts.
 
 scDeploy:
   enabled: true
@@ -23,10 +24,13 @@ scDeploy:
       valueFrom: { secretKeyRef: { name: host-chain-deployer, key: mnemonic } }
     - name: DEPLOYER_PRIVATE_KEY
       valueFrom: { secretKeyRef: { name: host-chain-deployer, key: deployer-private-key } }
-    # gateway side (no gateway chain locally; these are the e2e template's addresses)
+    # gateway side: KMSVerifier and InputVerifier embed these for signature verification, so they
+    # come from the gateway deploy (gw-sc-addresses), never from the template's pre-computed values
     - { name: CHAIN_ID_GATEWAY, value: "54321" }
-    - { name: DECRYPTION_ADDRESS, value: "0xF0bFB159C7381F7CB332586004d8247252C5b816" }
-    - { name: INPUT_VERIFICATION_ADDRESS, value: "0x3b12Fc766Eb598b285998877e8E90F3e43a1F8d2" }
+    - name: DECRYPTION_ADDRESS
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: decryption.address } }
+    - name: INPUT_VERIFICATION_ADDRESS
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: input_verification.address } }
     # KMS context: one node, thresholds 1
     - { name: NUM_KMS_NODES, value: "1" }
     - { name: PUBLIC_DECRYPTION_THRESHOLD, value: "1" }

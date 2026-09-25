@@ -64,6 +64,8 @@ jobs:
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template gateway-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-contracts/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template gateway-host-chains /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-host-chains/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template coprocessor-gateway /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/gateway/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the chain exporter (public sql_exporter chart)

@@ -4,10 +4,15 @@
 # and stamps contracts.version; with preventRedeployment the Job is a no-op afterwards.
 # Environment mirrors test-suite/fhevm/templates/env/.env.gateway-sc (public test addresses only);
 # the deployer key comes from the generated Secret gateway-deployer (account 1 of the gateway
-# phrase, as upstream). The host chain is registered with the addresses the host deploy wrote.
+# phrase, as upstream).
 #
-# Deployed by Argo CD (coprocessor-gateway-contracts in cluster/apps/values.yaml) into coproc,
-# one wave after the host contracts because it reads eth-sc-addresses.
+# Order, as in the upstream e2e stack: gateway contracts first (they need nothing from the host
+# chain), host contracts second (their KMSVerifier and InputVerifier embed the gateway's
+# Decryption and InputVerification addresses), then the host chain is registered on the
+# GatewayConfig (coprocessor-gateway-host-chains). The pre-computed addresses in the upstream
+# templates do not match this commit's deploy order, so nothing here relies on them.
+#
+# Deployed by Argo CD (coprocessor-gateway-contracts in cluster/apps/values.yaml) into coproc.
 
 scDeploy:
   enabled: true
@@ -57,15 +62,6 @@ scDeploy:
     - { name: CUSTODIAN_SIGNER_ADDRESS_0, value: "0x6764Bf471F841dDdc804A03e97Cb76b135faA54c" }
     # public encryption key of the test custodian, from the upstream template (not a private key)
     - { name: CUSTODIAN_ENCRYPTION_KEY_0, value: "0xea8b8b710d770493a41b588808ea8e09d986561f73d523227718233f3b4742de793f18a9885136a9" }
-    # host chain 12345 with the addresses the host contracts deploy wrote
-    - { name: NUM_HOST_CHAINS, value: "1" }
-    - { name: HOST_CHAIN_CHAIN_ID_0, value: "12345" }
-    - name: HOST_CHAIN_FHEVM_EXECUTOR_ADDRESS_0
-      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: fhevm_executor.address } }
-    - name: HOST_CHAIN_ACL_ADDRESS_0
-      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: acl.address } }
-    - { name: HOST_CHAIN_NAME_0, value: "anvil" }
-    - { name: HOST_CHAIN_WEBSITE_0, value: "https://anvil.invalid" }
     - { name: NUM_PAUSERS, value: "1" }
     - { name: PAUSER_ADDRESS_0, value: "0x34B344B40eA9Ef21Da5653468a072780d19B1fa4" }
     - { name: INPUT_VERIFICATION_PRICE, value: "10000000000000000000" }
@@ -80,8 +76,8 @@ scDeploy:
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$COPROCESSOR_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
     - npx hardhat task:deployAllGatewayContracts
     # --use-internal-proxy-address reads the proxy addresses this deploy just wrote instead of the
-    # GATEWAY_CONFIG_ADDRESS env var, as the upstream e2e stack does
-    - npx hardhat task:addHostChainsToGatewayConfig --use-internal-proxy-address true
+    # GATEWAY_CONFIG_ADDRESS env var, as the upstream e2e stack does. Host chains are registered
+    # by coprocessor-gateway-host-chains once the host contracts exist.
     - npx hardhat task:addGatewayPausers --use-internal-proxy-address true
   resources:
     requests: { cpu: 500m, memory: 1Gi }

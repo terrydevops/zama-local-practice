@@ -15,6 +15,7 @@ case "${1:-}" in
     helm template coprocessor-anvil-listener "$FHEVM_DIR/charts/coprocessor" -n coproc -f "$ROOT/coprocessor/listeners/anvil/values.yaml"
     helm template host-contracts "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/host-contracts/values.yaml"
     helm template gateway-contracts "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/gateway-contracts/values.yaml"
+    helm template gateway-host-chains "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/gateway-host-chains/values.yaml"
     helm template coprocessor-gateway "$FHEVM_DIR/charts/coprocessor" -n coproc -f "$ROOT/coprocessor/gateway/values.yaml" ;;
   status) kubectl --context "$CTX" get pods -n coproc -o wide ;;
   logs)

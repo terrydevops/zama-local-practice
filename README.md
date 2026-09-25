@@ -23,6 +23,7 @@ coprocessor/                  everything specific to the coprocessor
   listeners/<chain>/values.yaml   upstream chart, one host-listener release per chain
   host-contracts/             contracts chart values (host deploy Job) + smoke.sh + chain-reset.sh
   gateway-contracts/values.yaml   contracts chart values (gateway deploy Job)
+  gateway-host-chains/values.yaml contracts chart values (register the host chain on the Gateway)
   gateway/values.yaml         upstream chart, gateway release: gw-listener + tx-sender
   sql-exporter/values.yaml    upstream exporter chart values
   chain-exporter/values.yaml  public sql_exporter chart with our own chain-progress queries
@@ -43,8 +44,10 @@ Rules:
   and the chaos experiments are always applied by hand.
 - The coprocessor chart is installed as several releases, the way coprocessor-operator does it:
   workers, one listener per host chain, later the gateway side. Each is its own Application.
-- Sync waves: 0 infra (both chains), 1 monitoring and the host contracts Job, 2 gateway
-  contracts Job, workers and exporters, 3 listeners, gateway side, rules and chaos, 4 demo. Application health checks are on, so a wave waits for
+- Sync waves: 0 infra (both chains), 1 monitoring and the gateway contracts Job, 2 host
+  contracts Job, workers and exporters, 3 host chain registration, listeners, gateway side,
+  rules and chaos, 4 demo. Contracts go gateway, host, registration, like the upstream e2e
+  stack: the host contracts embed two gateway addresses. Application health checks are on, so a wave waits for
   the previous one.
 - Every child Application carries the resources finalizer and the root prunes: removing or
   renaming an entry deletes the Application and everything it deployed.

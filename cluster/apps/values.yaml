@@ -3,8 +3,8 @@
 #
 # Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
 # belongs to one system carries its prefix (coprocessor-*).
-# Waves: 0 infra (both chains) -> 1 monitoring (CRDs), host contracts Job -> 2 gateway contracts
-# Job, workers, exporters -> 3 listeners, gateway side, rules, dashboard, chaos -> 4 demo.
+# Waves: 0 infra (both chains) -> 1 monitoring (CRDs), gateway contracts Job -> 2 host contracts
+# Job, workers, exporters -> 3 host chain registration, listeners, gateway side, rules, chaos -> 4 demo.
 # The coprocessor chart is installed as several releases like coprocessor-operator does:
 # workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
 # previous one to be healthy.
@@ -58,10 +58,11 @@ applications:
       syncOptions: [CreateNamespace=true, ServerSideApply=true]
 
   # Host contracts on the anvil chain: a Job that deploys once and writes eth-sc-addresses.
-  # Jobs are immutable, so a changed spec is replaced rather than patched.
+  # Jobs are immutable, so a changed spec is replaced rather than patched. After the gateway
+  # contracts: KMSVerifier and InputVerifier embed two gateway addresses.
   coprocessor-host-contracts:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -127,11 +128,10 @@ applications:
       automated: { prune: true, selfHeal: true }
 
   # Gateway contracts on the local gateway chain: a Job that deploys once and writes
-  # gw-sc-addresses. One wave after the host contracts: it registers the host chain with the
-  # addresses from eth-sc-addresses.
+  # gw-sc-addresses. First of the contract Jobs: it needs nothing from the host chain.
   coprocessor-gateway-contracts:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -150,6 +150,30 @@ applications:
       syncOptions: [CreateNamespace=true, Replace=true]
       # a failed Job fails the sync, and automated sync never retries a revision whose sync
       # failed; retry so a transient failure (chain not up yet) does not need a human
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+  # Registers host chain 12345 on the GatewayConfig once both contract sets exist.
+  coprocessor-gateway-host-chains:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/contracts
+        helm:
+          releaseName: gateway-host-chains
+          valueFiles: [$values/coprocessor/gateway-host-chains/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true, Replace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
