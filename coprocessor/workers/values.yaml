@@ -47,7 +47,7 @@ tfheWorker:
     enabled: true
   resources:
     requests: { cpu: "1", memory: 1Gi }
-    limits:   { cpu: "6", memory: 6Gi }
+    limits:   { cpu: "6", memory: 12Gi }   # a KMS-generated server key expands to several GB; upstream testnet gives every worker 128Gi
 
 zkProofWorker:
   enabled: true
@@ -124,7 +124,7 @@ snsWorker:
     enabled: true
   resources:
     requests: { cpu: 500m, memory: 2Gi }
-    limits:   { cpu: "4", memory: 4Gi }
+    limits:   { cpu: "4", memory: 12Gi }   # same keyset expansion as tfhe-worker
 
 # ---------------------------------------------------------------- everything else off
 dbMigration:      { enabled: false }   # practice: seed/seed.sh runs migrations from the laptop
