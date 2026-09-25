@@ -25,6 +25,10 @@ coprocessor/                  everything specific to the coprocessor
   gateway-contracts/values.yaml   contracts chart values (gateway deploy Job)
   gateway-host-chains/values.yaml contracts chart values (register the host chain on the Gateway)
   gateway/values.yaml         upstream chart, gateway release: gw-listener + tx-sender
+  gateway-kms-context/values.yaml contracts chart Job: new KMS context on the Gateway
+  host-kms-keygen/values.yaml contracts chart Job: KMS context on the host chain, key + CRS requests
+  kms-core/                   centralized KMS core, plain manifests
+  kms-connector/values.yaml   upstream chart: the KMS side's gw-listener, kms-worker, tx-sender
   sql-exporter/values.yaml    upstream exporter chart values
   chain-exporter/values.yaml  public sql_exporter chart with our own chain-progress queries
   monitoring/                 alert rules + Grafana dashboard

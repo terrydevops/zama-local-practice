@@ -1,0 +1,106 @@
+# kms-connector: the KMS side's ears, brain and mouth, one release of the upstream chart
+# fhevm/charts/kms-connector. gw-listener watches the Gateway (decryption and key management
+# requests) and the canonical host chain (protocol config), kms-worker talks gRPC to kms-core,
+# tx-sender posts results back. Contract addresses come from the ConfigMaps the deploy Jobs
+# wrote: the chart only takes literal strings, but Kubernetes expands $(VAR) in env values, and
+# the chart renders commonConfig.env first, so every address is injected with configMapKeyRef.
+# Differences from a real operator are marked "practice:".
+#
+# Deployed by Argo CD (kms-connector in cluster/apps/values.yaml) from the chart at .fhevm-ref.
+
+commonConfig:
+  env:
+    - name: DB_USER
+      valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }
+    - name: DB_PASSWORD
+      valueFrom: { secretKeyRef: { name: coprocessor-db, key: password } }
+    - name: GW_DECRYPTION_ADDRESS
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: decryption.address } }
+    - name: GW_GATEWAY_CONFIG_ADDRESS
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: gateway_config.address } }
+    - name: ETH_KMS_GENERATION_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: kms_generation.address } }
+    - name: ETH_PROTOCOL_CONFIG_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: protocol_config.address } }
+    - name: ETH_ACL_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: acl.address } }
+    - name: ETH_KMS_VERIFIER_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: kms_verifier.address } }
+  # practice: a database in the shared Postgres (the migration Job creates it); testnet: its own RDS
+  databaseUrl: "postgresql://$(DB_USER):$(DB_PASSWORD)@postgres.infra.svc.cluster.local:5432/connector"
+  gatewayUrl: "http://anvil-gateway.infra.svc.cluster.local:8545"
+  gatewayChainId: "54321"
+  gatewayContractAddresses:
+    decryption: "$(GW_DECRYPTION_ADDRESS)"
+    gatewayConfig: "$(GW_GATEWAY_CONFIG_ADDRESS)"
+  ethereumUrl: "http://anvil.infra.svc.cluster.local:8545"
+  ethereumChainId: "12345"
+  ethereumContractAddresses:
+    kmsGeneration: "$(ETH_KMS_GENERATION_ADDRESS)"
+    protocolConfig: "$(ETH_PROTOCOL_CONFIG_ADDRESS)"
+    acl: "$(ETH_ACL_ADDRESS)"
+  tracing:
+    enabled: false
+
+kmsConnectorDbMigration:
+  enabled: true
+  image:
+    name: local/kms-connector-db-migration   # practice: built by coprocessor/images/build.sh
+    tag: dev
+  # the upstream image's entrypoint creates the database and runs the migrations
+  command: ["/bin/bash", "/init_db.sh"]
+
+kmsConnectorGwListener:
+  enabled: true
+  image:
+    name: local/kms-connector-gw-listener
+    tag: dev
+  env:
+    - { name: KMS_CONNECTOR_KMS_VERIFIER_ADDRESS, value: "$(ETH_KMS_VERIFIER_ADDRESS)" }
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+kmsConnectorKmsWorker:
+  enabled: true
+  image:
+    name: local/kms-connector-kms-worker
+    tag: dev
+  config:
+    kmsCoreEndpoints: "http://kms-core.coproc.svc.cluster.local:50051"
+    hostChains:
+      - url: "$(KMS_CONNECTOR_ETHEREUM_URL)"
+        chainId: "$(KMS_CONNECTOR_ETHEREUM_CHAIN_ID)"
+        aclAddress: "$(ETH_ACL_ADDRESS)"
+  env:
+    # where the coprocessor's ciphertexts are fetched from (practice: minio)
+    - { name: KMS_CONNECTOR_S3_CONFIG__REGION, value: eu-west-1 }
+    - { name: KMS_CONNECTOR_S3_CONFIG__BUCKET, value: kms-public }
+    - { name: KMS_CONNECTOR_S3_CONFIG__ENDPOINT, value: "http://minio.infra.svc.cluster.local:9000" }
+    - { name: KMS_CONNECTOR_SUPPORTED_CHAIN_IDS, value: "12345" }
+    - { name: KMS_CONNECTOR_KMS_VERIFIER_ADDRESS, value: "$(ETH_KMS_VERIFIER_ADDRESS)" }
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+kmsConnectorTxSender:
+  enabled: true
+  image:
+    name: local/kms-connector-tx-sender
+    tag: dev
+  wallet:
+    awsKms: { enabled: false }
+    # practice: the upstream test wallet from the generated Secret; its address is registered as
+    # KMS_TX_SENDER_ADDRESS_0 on both chains and funded by the context Jobs
+    secret:
+      name: kms-connector-tx-sender
+      key: kms-wallet
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }

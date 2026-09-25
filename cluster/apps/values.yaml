@@ -4,7 +4,8 @@
 # Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
 # belongs to one system carries its prefix (coprocessor-*).
 # Waves: 0 infra (both chains) -> 1 monitoring (CRDs), gateway contracts Job -> 2 host contracts
-# Job, workers, exporters -> 3 host chain registration, listeners, gateway side, rules, chaos -> 4 demo.
+# Job, workers, exporters, kms-core -> 3 host chain registration, gateway KMS context, listeners,
+# gateway side, kms-connector, rules, chaos -> 4 host KMS keygen, demo.
 # The coprocessor chart is installed as several releases like coprocessor-operator does:
 # workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
 # previous one to be healthy.
@@ -150,6 +151,93 @@ applications:
       syncOptions: [CreateNamespace=true, Replace=true]
       # a failed Job fails the sync, and automated sync never retries a revision whose sync
       # failed; retry so a transient failure (chain not up yet) does not need a human
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+  # Centralized KMS core: plain manifests (see coprocessor/kms-core/kms-core.yaml for why not the
+  # upstream chart). Generates its signing key on first start and publishes it to kms-public.
+  kms-core:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    source:
+      repoURL: git@github.com:terrydevops/zama-local-practice.git
+      targetRevision: master
+      path: coprocessor/kms-core
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
+  # KMS side of the protocol: gw-listener, kms-worker, tx-sender and their database migration.
+  kms-connector:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/kms-connector
+        helm:
+          releaseName: kms-connector
+          valueFiles: [$values/coprocessor/kms-connector/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [Replace=true]
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+  # Points the Gateway at the KMS that runs here (new KMS context with the discovered signer).
+  coprocessor-gateway-kms-context:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/contracts
+        helm:
+          releaseName: gateway-kms-context
+          valueFiles: [$values/coprocessor/gateway-kms-context/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [Replace=true]
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
+
+  # Host chain: KMS context and epoch on ProtocolConfig, then key and CRS generation requests.
+  coprocessor-host-kms-keygen:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/contracts
+        helm:
+          releaseName: host-kms-keygen
+          valueFiles: [$values/coprocessor/host-kms-keygen/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [Replace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }

@@ -1,0 +1,77 @@
+# Host chain side of the KMS bring-up (upstream: the host-sc steps after the deploy): define the
+# KMS context and epoch on ProtocolConfig with the discovered signer, fund the connector's
+# tx-sender, then ask KMSGeneration for a key and a CRS. kms-connector picks the requests up
+# from this chain, kms-core generates, tx-sender answers, and the coprocessor's host-listener
+# downloads the material into the keys table. Same chart and image as the host deploy, same
+# addresses volume.
+#
+# Deployed by Argo CD (coprocessor-host-kms-keygen in cluster/apps/values.yaml), after kms-connector.
+
+scDeploy:
+  enabled: true
+  preventRedeployment: true
+  image:
+    name: local/host-contracts
+    tag: dev
+  configmap:
+    name: eth-kms-keygen
+  env:
+    - { name: HARDHAT_NETWORK, value: staging }
+    - { name: RPC_URL, value: "http://anvil.infra.svc.cluster.local:8545" }
+    - name: MNEMONIC
+      valueFrom: { secretKeyRef: { name: host-chain-deployer, key: mnemonic } }
+    - name: DEPLOYER_PRIVATE_KEY
+      valueFrom: { secretKeyRef: { name: host-chain-deployer, key: deployer-private-key } }
+    - name: KMS_GENERATION_CONTRACT_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: kms_generation.address } }
+    - name: PROTOCOL_CONFIG_CONTRACT_ADDRESS
+      valueFrom: { configMapKeyRef: { name: eth-sc-addresses, key: protocol_config.address } }
+    - { name: NUM_COPROCESSORS, value: "1" }
+    - { name: COPROCESSOR_THRESHOLD, value: "1" }
+    - { name: COPROCESSOR_SIGNER_ADDRESS_0, value: "0x6518D50aDc9036Df37119eA465a8159E34417E2E" }
+    # one KMS node; signer address is discovered at run time, tx-sender is the connector wallet
+    - { name: NUM_KMS_NODES, value: "1" }
+    - { name: PUBLIC_DECRYPTION_THRESHOLD, value: "1" }
+    - { name: USER_DECRYPTION_THRESHOLD, value: "1" }
+    - { name: KMS_GENERATION_THRESHOLD, value: "1" }
+    - { name: MPC_THRESHOLD, value: "0" }
+    - { name: KMS_TX_SENDER_ADDRESS_0, value: "0x31de9c8ac5ecd5eaceddddee531e9bad8ac9c2a5" }
+    - { name: KMS_NODE_IP_ADDRESS_0, value: "127.0.0.1" }
+    - { name: KMS_NODE_IP_0, value: "127.0.0.1" }
+    - { name: KMS_NODE_STORAGE_URL_0, value: "http://minio.infra.svc.cluster.local:9000/kms-public" }
+    - { name: KMS_NODE_PARTY_ID_0, value: "1" }
+    - { name: KMS_NODE_MPC_IDENTITY_0, value: "kms-node-0" }
+    - { name: KMS_NODE_CA_CERT_0, value: "0x" }
+    - { name: KMS_NODE_STORAGE_PREFIX_0, value: "kms-node-0" }
+    - { name: KMS_SOFTWARE_VERSION, value: "0.1.0" }
+    - { name: KMS_PCR_VALUES, value: '[{"pcr0":"0x00","pcr1":"0x00","pcr2":"0x00"}]' }
+    # a new context id: the initial one was set at deploy with the template signer
+    - { name: KMS_CONTEXT_ID, value: "3166189940082864718613269121331309980362851143201109172953918312716374638594" }
+  deployCommands:
+    - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
+    # practice only: gas for the connector's tx-sender on the host chain
+    - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$KMS_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
+    # the KMS signing key lives in the public kms-public bucket; read its address from there
+    - until key=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/?list-type=2&prefix=PUB/VerfAddress/" | grep -oE "<Key>[^<]+</Key>" | head -1 | sed "s#<Key>##;s#</Key>##") && [ -n "$key" ]; do echo "waiting for the KMS signing key in kms-public"; sleep 5; done
+    - export KMS_SIGNER_ADDRESS_0=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/$key"); echo "KMS signer $KMS_SIGNER_ADDRESS_0"
+    - npx hardhat task:defineNewKmsContextAndEpoch --use-internal-proxy-address true
+    - npx hardhat task:triggerKeygen --params-type 0 --use-internal-proxy-address true
+    - npx hardhat task:triggerCrsgen --params-type 0 --max-bit-length 2048 --use-internal-proxy-address true
+    - printf 'KMS_SIGNER_ADDRESS=%s\n' "$KMS_SIGNER_ADDRESS_0" > addresses/.env.kmskeygen
+  resources:
+    requests: { cpu: 500m, memory: 1Gi }
+    limits:   { cpu: "2", memory: 3Gi }
+  securityContext:
+    runAsNonRoot: true
+    runAsUser: 10000
+    fsGroup: 10001
+
+persistence:
+  enabled: true
+  mountPath: /app/addresses
+  volumeClaim:
+    name: host-contracts-addresses
+    create: false
+
+scUpgrade:
+  enabled: false

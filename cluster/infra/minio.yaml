@@ -46,6 +46,8 @@ kind: Job
 metadata:
   name: minio-setup
   namespace: infra
+  annotations:
+    argocd.argoproj.io/sync-options: Replace=true   # Jobs are immutable
 spec:
   backoffLimit: 10
   template:
@@ -64,4 +66,7 @@ spec:
               mc admin policy attach local readwrite --user "$ACCESS_KEY" || true
               mc mb --ignore-existing local/coproc-0
               mc anonymous set public local/coproc-0
+              # KMS public material (signing key address, FHE public keys, CRS), read by everyone
+              mc mb --ignore-existing local/kms-public
+              mc anonymous set public local/kms-public
               echo done

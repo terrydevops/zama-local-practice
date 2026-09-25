@@ -149,6 +149,18 @@ stringData:
   mnemonic: "$GW_MNEMONIC"
   deployer-private-key: $(gwkey 1)
 YAML
+# kms-connector tx-sender: the upstream test wallet (its address is what the contracts register
+# as KMS_TX_SENDER_ADDRESS_0), read from the connector env template like the phrases above
+KC_KEY=$(grep '^KMS_CONNECTOR_PRIVATE_KEY=' "$FHEVM_DIR/test-suite/fhevm/templates/env/.env.kms-connector" | cut -d= -f2- | tr -d '"')
+[ -n "$KC_KEY" ] || { echo "could not read KMS_CONNECTOR_PRIVATE_KEY from the kms-connector template" >&2; exit 1; }
+ensure kms-connector-tx-sender coproc <<YAML
+apiVersion: v1
+kind: Secret
+metadata: { name: kms-connector-tx-sender, namespace: coproc }
+type: Opaque
+stringData:
+  kms-wallet: $KC_KEY
+YAML
 ensure demo-sender coproc <<YAML
 # coprocessor-demo Job: the account that deploys Add.sol and sends add(3,5), account 0 of the phrase
 apiVersion: v1

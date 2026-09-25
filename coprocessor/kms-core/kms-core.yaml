@@ -1,0 +1,142 @@
+# Centralized KMS core (one node, no enclave, no TLS): the development flavour the upstream e2e
+# stack runs. The upstream kms-core chart targets threshold deployments with IRSA and takes
+# minio credentials as literal values, so this is a plain manifest instead: the same two
+# binaries (kms-gen-keys, kms-server) with the e2e config, credentials from a Secret.
+# Signing keys are generated deterministically on first start, so the signer address is stable
+# across reinstalls; the context Jobs still discover it from the bucket rather than assume it.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: kms-core-config
+  namespace: coproc
+data:
+  kms-gen-keys.toml: |
+    [keygen]
+    deterministic = true
+    overwrite = false
+
+    [aws]
+    region = "eu-west-1"
+    s3_endpoint = "http://minio.infra.svc.cluster.local:9000"
+
+    [public_vault.storage.s3]
+    bucket = "kms-public"
+    prefix = "PUB"
+
+    [private_vault.storage.file]
+    path = "/keys"
+  kms-server.toml: |
+    [service]
+    listen_address = "0.0.0.0"
+    listen_port = 50051
+    timeout_secs = 360
+    grpc_max_message_size = 104857600
+
+    [telemetry]
+    tracing_service_name = "kms-centralized"
+    metrics_bind_address = "0.0.0.0:9646"
+
+    [aws]
+    region = "eu-west-1"
+    s3_endpoint = "http://minio.infra.svc.cluster.local:9000"
+
+    [public_vault]
+    storage_cache_size = 1000
+
+    [public_vault.storage.s3]
+    bucket = "kms-public"
+    prefix = "PUB"
+
+    [private_vault.storage.file]
+    path = "/keys"
+
+    [rate_limiter_conf]
+    bucket_size = 50000
+    pub_decrypt = 1
+    user_decrypt = 1
+    crsgen = 100
+    preproc = 25000
+    keygen = 1000
+    new_epoch = 1
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: kms-core
+  namespace: coproc
+  labels: { app: kms-core }
+spec:
+  selector: { app: kms-core }
+  ports:
+    - { name: grpc, port: 50051, targetPort: 50051 }
+    - { name: metrics, port: 9646, targetPort: 9646 }
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: kms-core
+  namespace: coproc
+spec:
+  serviceName: kms-core
+  replicas: 1
+  selector: { matchLabels: { app: kms-core } }
+  template:
+    metadata: { labels: { app: kms-core } }
+    spec:
+      securityContext: { fsGroup: 10002 }
+      initContainers:
+        - name: gen-keys
+          image: local/kms-core:dev
+          imagePullPolicy: IfNotPresent
+          command: ["kms-gen-keys", "--config-file", "/config/kms-gen-keys.toml"]
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: coprocessor-s3, key: access_key } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: coprocessor-s3, key: secret_key } }
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: keys, mountPath: /keys }
+          resources:
+            requests: { cpu: 100m, memory: 256Mi }
+            limits:   { cpu: "1", memory: 1Gi }
+      containers:
+        - name: kms-server
+          image: local/kms-core:dev
+          imagePullPolicy: IfNotPresent
+          command: ["kms-server", "--config-file", "/config/kms-server.toml"]
+          env:
+            - name: AWS_ACCESS_KEY_ID
+              valueFrom: { secretKeyRef: { name: coprocessor-s3, key: access_key } }
+            - name: AWS_SECRET_ACCESS_KEY
+              valueFrom: { secretKeyRef: { name: coprocessor-s3, key: secret_key } }
+            - { name: RUST_LOG, value: info }
+          ports:
+            - { name: grpc, containerPort: 50051 }
+            - { name: metrics, containerPort: 9646 }
+          volumeMounts:
+            - { name: config, mountPath: /config, readOnly: true }
+            - { name: keys, mountPath: /keys }
+          readinessProbe:
+            tcpSocket: { port: 50051 }
+            periodSeconds: 5
+          resources:
+            requests: { cpu: "1", memory: 2Gi }
+            limits:   { cpu: "4", memory: 8Gi }   # FHE key generation is the peak
+      volumes:
+        - name: config
+          configMap: { name: kms-core-config }
+  volumeClaimTemplates:
+    - metadata: { name: keys }
+      spec:
+        accessModes: [ReadWriteOnce]
+        resources: { requests: { storage: 2Gi } }
+---
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: kms-core
+  namespace: coproc
+spec:
+  selector: { matchLabels: { app: kms-core } }
+  endpoints: [ { port: metrics, interval: 30s } ]

@@ -43,7 +43,7 @@ jobs:
         run: |
           ref=$(cat .fhevm-ref)
           git clone --filter=blob:none --no-checkout https://github.com/zama-ai/fhevm.git /tmp/fhevm
-          git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter charts/contracts
+          git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter charts/contracts charts/kms-connector
           git -C /tmp/fhevm checkout "$ref"
       - uses: azure/setup-helm@v4
       - name: kubeconform
@@ -68,6 +68,12 @@ jobs:
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template coprocessor-gateway /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/gateway/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template kms-connector /tmp/fhevm/charts/kms-connector -n coproc -f coprocessor/kms-connector/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template gateway-kms-context /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-kms-context/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template host-kms-keygen /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-kms-keygen/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the chain exporter (public sql_exporter chart)
         run: |
           helm repo add sql-exporter https://burningalchemist.github.io/sql_exporter/ >/dev/null
@@ -82,6 +88,6 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS" \
             cluster/bootstrap/root-app.yaml \
-            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml cluster/infra/anvil-gateway.yaml \
+            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml cluster/infra/anvil-gateway.yaml coprocessor/kms-core/kms-core.yaml \
             coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml \
             coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/add.yaml coprocessor/demo/k8s/transfer.yaml
