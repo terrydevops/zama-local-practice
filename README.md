@@ -23,6 +23,7 @@ coprocessor/                  everything specific to the coprocessor
   listeners/<chain>/values.yaml   upstream chart, one host-listener release per chain
   host-contracts/             contracts chart values (deploy Job) + smoke.sh
   sql-exporter/values.yaml    upstream exporter chart values
+  chain-exporter/values.yaml  public sql_exporter chart with our own chain-progress queries
   monitoring/                 alert rules + Grafana dashboard
   demo/                       contracts + Rust runner: on-chain checks through the coprocessor (sync-hook Jobs)
   chaos/  seed/  jobs/  scripts/

@@ -12,7 +12,7 @@ CTX     := kind-$(CLUSTER)
 FHEVM_DIR ?= $(CURDIR)/../zama-ai-repos/fhevm
 export FHEVM_DIR KUBE_CONTEXT=$(CTX) KIND_CLUSTER=$(CLUSTER)
 
-.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke argocd-ui grafana prom down
+.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke chain-compact chain-reset argocd-ui grafana prom down
 
 up: cluster images bootstrap argocd root wait-infra seed
 
@@ -76,6 +76,16 @@ demo:
 
 smoke:
 	coprocessor/host-contracts/smoke.sh
+
+# Compact the anvil state now (the init container does it on every start); the weekly CronJob does the same.
+chain-compact:
+	kubectl --context $(CTX) -n infra rollout restart deployment/anvil
+	kubectl --context $(CTX) -n infra rollout status deployment/anvil --timeout=300s
+	kubectl --context $(CTX) -n infra logs deployment/anvil -c check-state
+
+# Last resort, destroys the local host chain: CONFIRM=yes make chain-reset
+chain-reset:
+	CONFIRM=$(CONFIRM) coprocessor/host-contracts/chain-reset.sh
 
 argocd-ui:
 	cluster/bootstrap/install.sh ui

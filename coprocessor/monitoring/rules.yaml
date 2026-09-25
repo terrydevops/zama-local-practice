@@ -51,6 +51,34 @@ spec:
             summary: "{{ $labels.container }} restarted {{ $value }} times in 10m"
             description: "Look at the previous container log (kubectl logs --previous) for the panic."
 
+        - alert: InfraCrashLoop
+          expr: increase(kube_pod_container_status_restarts_total{namespace="infra"}[10m]) >= 2
+          for: 1m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.pod }} in infra is restarting"
+            description: "postgres, minio or the host chain is crash-looping; the coprocessor pods will look healthy while they wait on it."
+        - alert: HostChainStalled
+          expr: host_chain_last_valid_block_age_seconds > 120
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "chain {{ $labels.chain_id }}: no block validated for {{ $value | humanizeDuration }}"
+            description: "The host chain stopped producing blocks or the listener lost it. Every coprocessor pod stays healthy in this state; check anvil in infra first, then the listener's RPC connection."
+        - alert: HostChainExporterDown
+          expr: absent(host_chain_last_valid_block_age_seconds)
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "no chain progress metrics"
+            description: "coprocessor-chain-exporter is not scraping; HostChainStalled cannot fire."
+        - alert: AnvilMemoryHigh
+          expr: container_memory_working_set_bytes{namespace="infra", container="anvil"} / on(namespace, pod, container) kube_pod_container_resource_limits{resource="memory"} > 0.7
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "anvil is using more than 70% of its memory limit"
+            description: "The state dump has grown; run make chain-compact before the next dump gets OOM-killed and leaves a truncated file."
         - alert: CoprocessorWorkerDown
           expr: up{job=~"coprocessor-.*"} == 0
           for: 2m

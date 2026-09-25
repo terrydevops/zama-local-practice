@@ -141,6 +141,26 @@ applications:
     syncPolicy:
       automated: { prune: true, selfHeal: true }
 
+  # Chain progress from the listener's tables (public sql_exporter chart, own queries).
+  coprocessor-chain-exporter:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://burningalchemist.github.io/sql_exporter/
+        chart: sql-exporter
+        targetRevision: 0.18.10
+        helm:
+          releaseName: coprocessor-chain-exporter
+          valueFiles: [$values/coprocessor/chain-exporter/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
   # Alert rules and the Grafana dashboard for the pipeline.
   coprocessor-monitoring:
     namespace: argocd

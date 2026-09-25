@@ -1,7 +1,14 @@
 # Local host chain: anvil with the same flags as the upstream test-suite host-node (1s blocks,
 # chain id 12345, 120 funded accounts, one slot per epoch so blocks finalize at once).
-# State is written to a PVC every 10s and reloaded on start, so contract addresses and the
-# block height the host-listener has recorded stay valid across pod restarts.
+#
+# State handling, learned the hard way (see the incident note in the study repo):
+# anvil dumps the whole chain to one JSON file; at one block per second that grows about
+# 135 MB a day and no anvil flag bounds it. A dump interrupted mid-write (the pod was
+# OOM-killed at 1Gi) left a truncated file and anvil crash-looped for two days.
+# So: an init container validates the file before anvil starts, repairs a truncated tail,
+# keeps only the last KEEP_BLOCKS blocks, and moves anything it changed aside instead of
+# deleting it. If the file cannot be repaired the pod stays down, which is what the alert
+# is for. A weekly restart re-runs the compaction; the memory limit covers a week of growth.
 apiVersion: v1
 kind: ConfigMap
 metadata:
@@ -11,6 +18,93 @@ data:
   CHAIN_ID: "12345"
 # MNEMONIC comes from the generated Secret anvil-mnemonic (cluster/bootstrap/secrets.sh); the
 # host contracts deployer key is derived from the same phrase.
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anvil-state-tools
+  namespace: infra
+data:
+  check-state.py: |
+    # Validate, repair and compact an anvil --state dump before anvil loads it.
+    # Never deletes data: originals are renamed *.corrupt-<ts> / *.before-compact-<ts>.
+    import json, os, sys, time
+    path = os.environ.get("STATE", "/data/anvil.json")
+    keep = int(os.environ.get("KEEP_BLOCKS", "20000"))
+    if not os.path.exists(path):
+        print("no state file, anvil starts a fresh chain"); sys.exit(0)
+    data = open(path, "rb").read()
+    ts = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+
+    def parse(b):
+        try:
+            return json.loads(b)
+        except json.JSONDecodeError:
+            return None
+
+    obj = parse(data)
+    if obj is None:
+        # A dump interrupted mid-write: the blocks array is complete, the tail of the
+        # transactions array is not. Cut to the last complete element and close the document.
+        print("state file does not parse, trying to repair a truncated tail")
+        try:
+            blocks_key = data.index(b'"blocks":')
+            depth = 0; instr = False; esc = False; blocks_end = None
+            for i in range(data.index(b'[', blocks_key), len(data)):
+                c = data[i]
+                if instr:
+                    if esc: esc = False
+                    elif c == 0x5c: esc = True
+                    elif c == 0x22: instr = False
+                    continue
+                if c == 0x22: instr = True
+                elif c in (0x7b, 0x5b): depth += 1
+                elif c in (0x7d, 0x5d):
+                    depth -= 1
+                    if depth == 0: blocks_end = i; break
+            if blocks_end is None:
+                raise ValueError("blocks array itself is truncated")
+            tx_key = data.index(b'"transactions":', blocks_end)
+            arr = data.index(b'[', tx_key)
+            depth = 0; instr = False; esc = False; last = None
+            for i in range(arr, len(data)):
+                c = data[i]
+                if instr:
+                    if esc: esc = False
+                    elif c == 0x5c: esc = True
+                    elif c == 0x22: instr = False
+                    continue
+                if c == 0x22: instr = True
+                elif c in (0x7b, 0x5b): depth += 1
+                elif c in (0x7d, 0x5d):
+                    depth -= 1
+                    if depth == 1: last = i
+                    if depth == 0: break
+            repaired = data[:last + 1] + b"]}" if last else data[:arr + 1] + b"]}"
+            obj = parse(repaired)
+            if obj is None:
+                raise ValueError("repaired document still does not parse")
+        except Exception as e:
+            print("cannot repair:", e); sys.exit(1)
+        os.rename(path, f"{path}.corrupt-{ts}")
+        print(f"repaired; original kept as {path}.corrupt-{ts}")
+
+    best = obj.get("best_block_number", 0)
+    blocks = obj.get("blocks", [])
+    def num(b):
+        n = b.get("header", b).get("number")
+        return int(n, 16) if isinstance(n, str) else n
+    if len(blocks) > keep:
+        # blocks are serialized unordered; filter by number, not by position
+        obj["blocks"] = [b for b in blocks if num(b) > best - keep]
+        obj["transactions"] = []
+        if os.path.exists(path):
+            os.rename(path, f"{path}.before-compact-{ts}")
+        print(f"compacted: {len(blocks)} -> {len(obj['blocks'])} blocks, best {best}")
+    out = json.dumps(obj, separators=(",", ":")).encode()
+    tmp = path + ".tmp"
+    open(tmp, "wb").write(out); os.replace(tmp, path)
+    print(f"state ok: best block {best}, {len(obj['blocks'])} blocks, {len(out)} bytes")
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
@@ -33,7 +127,21 @@ spec:
   template:
     metadata: { labels: { app: anvil } }
     spec:
-      securityContext: { fsGroup: 1000 }   # the image runs as uid 1000 (foundry)
+      securityContext: { fsGroup: 1000 }   # the anvil image runs as uid 1000 (foundry)
+      initContainers:
+        - name: check-state
+          image: python:3-alpine
+          command: ["python3", "/tools/check-state.py"]
+          env:
+            - { name: STATE, value: /data/anvil.json }
+            - { name: KEEP_BLOCKS, value: "20000" }   # about 5.5 hours of 1s blocks, plenty for listener catchup
+          securityContext: { runAsUser: 1000, runAsGroup: 1000 }
+          volumeMounts:
+            - { name: state, mountPath: /data }
+            - { name: tools, mountPath: /tools, readOnly: true }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: "1", memory: 3Gi }      # the whole dump is parsed in memory
       containers:
         - name: anvil
           image: ghcr.io/foundry-rs/foundry:v1.3.5
@@ -44,18 +152,20 @@ spec:
           args:
             - exec anvil --block-time 1 --host 0.0.0.0 --port 8545 --chain-id "$CHAIN_ID"
               --accounts 120 --mnemonic "$MNEMONIC" --slots-in-an-epoch 1
-              --state /data/anvil.json --state-interval 10
+              --state /data/anvil.json --state-interval 60
           ports: [ { containerPort: 8545 } ]
           volumeMounts: [ { name: state, mountPath: /data } ]
           readinessProbe:
             tcpSocket: { port: 8545 }
             periodSeconds: 3
           resources:
-            requests: { cpu: 100m, memory: 256Mi }
-            limits:   { cpu: "1", memory: 1Gi }
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: "1", memory: 3Gi }      # a week of growth between compactions
       volumes:
         - name: state
           persistentVolumeClaim: { claimName: anvil-state }
+        - name: tools
+          configMap: { name: anvil-state-tools }
 ---
 # ClusterIP only; from the laptop use kubectl port-forward svc/anvil -n infra 8545:8545.
 apiVersion: v1
@@ -66,3 +176,55 @@ metadata:
 spec:
   selector: { app: anvil }
   ports: [ { port: 8545, targetPort: 8545 } ]
+---
+# Weekly restart: the init container compacts the state on every start. About a minute of
+# chain downtime; the host-listener reconnects on its own.
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: anvil-restarter
+  namespace: infra
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: anvil-restarter
+  namespace: infra
+rules:
+  - apiGroups: ["apps"]
+    resources: ["deployments"]
+    resourceNames: ["anvil"]
+    verbs: ["get", "patch"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: anvil-restarter
+  namespace: infra
+subjects: [ { kind: ServiceAccount, name: anvil-restarter, namespace: infra } ]
+roleRef: { kind: Role, name: anvil-restarter, apiGroup: rbac.authorization.k8s.io }
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: anvil-compact
+  namespace: infra
+spec:
+  schedule: "0 3 * * 0"
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: 2
+  failedJobsHistoryLimit: 2
+  jobTemplate:
+    spec:
+      backoffLimit: 1
+      template:
+        spec:
+          serviceAccountName: anvil-restarter
+          restartPolicy: Never
+          containers:
+            - name: kubectl
+              image: bitnami/kubectl:1.35
+              command: ["kubectl", "-n", "infra", "rollout", "restart", "deployment/anvil"]
+              resources:
+                requests: { cpu: 10m, memory: 32Mi }
+                limits:   { cpu: 200m, memory: 128Mi }

@@ -59,6 +59,11 @@ jobs:
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template host-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-contracts/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+      - name: render + validate the chain exporter (public sql_exporter chart)
+        run: |
+          helm repo add sql-exporter https://burningalchemist.github.io/sql_exporter/ >/dev/null
+          helm template coprocessor-chain-exporter sql-exporter/sql-exporter --version 0.18.10 -n monitoring -f coprocessor/chain-exporter/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the sql-exporter chart
         run: |
           helm dependency update /tmp/fhevm/charts/coprocessor-sql-exporter >/dev/null

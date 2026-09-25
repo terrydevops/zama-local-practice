@@ -1,0 +1,58 @@
+# Chain progress as seen by the host-listener, read from its tables with the public
+# sql_exporter chart (the same exporter the upstream coprocessor-sql-exporter chart wraps,
+# whose queries cannot be extended from values). Same DSN Secret as that release.
+# Feeds the HostChainStalled alert: the anvil crash of 2026-09-23 went unnoticed for two
+# days because every coprocessor pod stayed healthy while waiting on a chain that did not move.
+image:
+  repository: burningalchemist/sql_exporter
+  tag: "0.23.0"
+env:
+  DATA_SOURCE_NAME:
+    from:
+      kind: Secret
+      name: sql-exporter-config
+      key: DATA_SOURCE_NAME
+serviceMonitor:
+  enabled: true
+  interval: 30s
+resources:
+  requests: { cpu: 10m, memory: 32Mi }
+  limits:   { cpu: 200m, memory: 128Mi }
+config:
+  global:
+    scrape_timeout: 10s
+    scrape_timeout_offset: 500ms
+    min_interval: 0s
+    max_connections: 2
+    max_idle_connections: 2
+  target:
+    data_source_name: '$DATA_SOURCE_NAME'
+    collectors: [host-chain]
+  collectors:
+    - collector_name: host-chain
+      min_interval: 15s
+      metrics:
+        - metric_name: host_chain_last_valid_block
+          type: gauge
+          help: 'Highest block the host-listener has validated, per chain'
+          key_labels: [chain_id]
+          values: [block_number]
+          query: |
+            SELECT chain_id::text AS chain_id, max(block_number)::float AS block_number
+            FROM host_chain_blocks_valid GROUP BY chain_id;
+        - metric_name: host_chain_last_valid_block_age_seconds
+          type: gauge
+          help: 'Seconds since the host-listener last validated a block, per chain'
+          key_labels: [chain_id]
+          values: [age]
+          query: |
+            SELECT chain_id::text AS chain_id, extract(epoch FROM now() - max(created_at))::float AS age
+            FROM host_chain_blocks_valid GROUP BY chain_id;
+        - metric_name: host_chain_computations_pending
+          type: gauge
+          help: 'Computations written by the listener that no worker has completed yet, per chain'
+          key_labels: [chain_id]
+          values: [pending]
+          query: |
+            SELECT host_chain_id::text AS chain_id, count(*)::float AS pending
+            FROM computations WHERE NOT is_completed GROUP BY host_chain_id;
