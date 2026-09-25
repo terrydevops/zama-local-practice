@@ -23,6 +23,15 @@ hostListenerShared:
     name: local/host-listener        # practice: built by coprocessor/images/build.sh
     tag: dev
   replicas: 1
+  # the listener downloads activated KMS key material from the KMS's public bucket with the
+  # AWS SDK, which refuses to send a request without a region (practice: minio, same
+  # credentials the workers use; testnet: IRSA)
+  env:
+    - { name: AWS_REGION, value: eu-west-1 }
+    - name: AWS_ACCESS_KEY_ID
+      valueFrom: { secretKeyRef: { name: coprocessor-s3, key: access_key } }
+    - name: AWS_SECRET_ACCESS_KEY
+      valueFrom: { secretKeyRef: { name: coprocessor-s3, key: secret_key } }
   # This build serves only /healthz and /liveness on the health port; nothing answers on the
   # chart's metrics port, so a ServiceMonitor would be a permanently down target. Chain
   # progress is watched through the database instead (coprocessor-chain-exporter).
