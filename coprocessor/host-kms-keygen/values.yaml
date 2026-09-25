@@ -50,8 +50,10 @@ scDeploy:
     - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
     # practice only: gas for the connector's tx-sender on the host chain
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$KMS_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
-    - npx hardhat task:triggerKeygen --params-type 0 --use-internal-proxy-address true
-    - npx hardhat task:triggerCrsgen --params-type 0 --max-bit-length 2048 --use-internal-proxy-address true
+    # idempotent: a re-run (after a failure, or a Job re-creation) must not request a second key,
+    # because every activation makes each worker expand a new server key in memory
+    - if [ "$(cast call --rpc-url "$RPC_URL" "$KMS_GENERATION_CONTRACT_ADDRESS" 'getActiveKeyId()(uint256)' | cut -d' ' -f1)" != 0 ]; then echo "a key is already active, skipping keygen"; else npx hardhat task:triggerKeygen --params-type 0 --use-internal-proxy-address true; fi
+    - if [ "$(cast call --rpc-url "$RPC_URL" "$KMS_GENERATION_CONTRACT_ADDRESS" 'getActiveCrsId()(uint256)' | cut -d' ' -f1)" != 0 ]; then echo "a CRS is already active, skipping crsgen"; else npx hardhat task:triggerCrsgen --params-type 0 --max-bit-length 2048 --use-internal-proxy-address true; fi
     - printf 'KMS_KEYGEN_REQUESTED=%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" > addresses/.env.kmskeygen
   resources:
     requests: { cpu: 500m, memory: 1Gi }
