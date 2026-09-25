@@ -79,8 +79,10 @@ scDeploy:
     # accounts, so give it gas here (a real operator funds its own wallet)
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$COPROCESSOR_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
     - npx hardhat task:deployAllGatewayContracts
-    - npx hardhat task:addHostChainsToGatewayConfig
-    - npx hardhat task:addGatewayPausers
+    # --use-internal-proxy-address reads the proxy addresses this deploy just wrote instead of the
+    # GATEWAY_CONFIG_ADDRESS env var, as the upstream e2e stack does
+    - npx hardhat task:addHostChainsToGatewayConfig --use-internal-proxy-address true
+    - npx hardhat task:addGatewayPausers --use-internal-proxy-address true
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { cpu: "2", memory: 3Gi }
