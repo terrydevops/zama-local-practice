@@ -59,8 +59,9 @@ applications:
       syncOptions: [CreateNamespace=true, ServerSideApply=true]
 
   # Host contracts on the anvil chain: a Job that deploys once and writes eth-sc-addresses.
-  # Jobs are immutable, so a changed spec is replaced rather than patched. After the gateway
-  # contracts: KMSVerifier and InputVerifier embed two gateway addresses.
+  # Jobs are immutable: to re-run one, delete it and let the sync create it again (kubectl
+  # replace cannot create a Job, the API wants the selector the controller normally fills in).
+  # After the gateway contracts: KMSVerifier and InputVerifier embed two gateway addresses.
   coprocessor-host-contracts:
     namespace: argocd
     additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
@@ -79,7 +80,7 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [CreateNamespace=true, Replace=true]
+      syncOptions: [CreateNamespace=true]
       # a failed Job fails the sync, and automated sync never retries a revision whose sync
       # failed; retry so a transient failure (chain not up yet) does not need a human
       retry:
@@ -148,7 +149,7 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [CreateNamespace=true, Replace=true]
+      syncOptions: [CreateNamespace=true]
       # a failed Job fails the sync, and automated sync never retries a revision whose sync
       # failed; retry so a transient failure (chain not up yet) does not need a human
       retry:
@@ -189,7 +190,6 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [Replace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
@@ -213,7 +213,6 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [Replace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
@@ -237,7 +236,6 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [Replace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
@@ -261,7 +259,7 @@ applications:
     destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
-      syncOptions: [CreateNamespace=true, Replace=true]
+      syncOptions: [CreateNamespace=true]
       retry:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
