@@ -70,7 +70,8 @@ demo-image:
 
 demo:
 	kubectl --context $(CTX) -n argocd patch application coprocessor-demo --type merge -p '{"operation":{"sync":{"syncStrategy":{"hook":{}}}}}'
-	@sleep 5; for j in add transfer; do \
+	@for j in add transfer; do \
+	  until kubectl --context $(CTX) -n coproc get job/coprocessor-demo-$$j >/dev/null 2>&1; do sleep 3; done; \
 	  kubectl --context $(CTX) -n coproc wait --for=condition=complete job/coprocessor-demo-$$j --timeout=600s >/dev/null || true; \
 	  echo "== $$j"; kubectl --context $(CTX) -n coproc logs job/coprocessor-demo-$$j; done
 
