@@ -59,6 +59,10 @@ kmsConnectorGwListener:
     tag: dev
   env:
     - { name: KMS_CONNECTOR_KMS_VERIFIER_ADDRESS, value: "$(ETH_KMS_VERIFIER_ADDRESS)" }
+    # by default the listener starts at the latest block, so requests emitted before it (re)started
+    # are never seen; scanning from the first block is cheap here and only matches these contracts
+    - { name: KMS_CONNECTOR_KMS_FROM_BLOCK_NUMBER, value: "1" }
+    - { name: KMS_CONNECTOR_DECRYPTION_FROM_BLOCK_NUMBER, value: "1" }
   serviceMonitor:
     enabled: true
   resources:
