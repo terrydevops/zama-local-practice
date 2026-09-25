@@ -3,17 +3,21 @@
 #   ./build.sh [load] [image ...]
 # Images: tfhe-worker sns-worker zkproof-worker host-listener gw-listener transaction-sender (Dockerfile, Rust workspace)
 #         host-contracts (host-contracts.Dockerfile, npm workspace), gateway-contracts (gateway-contracts.Dockerfile)
+#         kms-core (kms-core.Dockerfile, the kms checkout next to fhevm)
+#         kms-connector-gw-listener kms-connector-kms-worker kms-connector-tx-sender kms-connector-db-migration (kms-connector.Dockerfile)
 # FHEVM_DIR overrides the checkout location (default: ../zama-ai-repos/fhevm next to this repo).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)
 FHEVM_DIR=${FHEVM_DIR:-$ROOT/../zama-ai-repos/fhevm}
+KMS_DIR=${KMS_DIR:-$ROOT/../zama-ai-repos/kms}
 TAG=${TAG:-dev}
 CLUSTER=${KIND_CLUSTER:-zama-practice}
 LOAD=false
 if [ "${1:-}" = load ]; then LOAD=true; shift; fi
 RUST_IMAGES="tfhe-worker sns-worker zkproof-worker host-listener gw-listener transaction-sender"
-IMAGES=${*:-$RUST_IMAGES host-contracts gateway-contracts}
+CONNECTOR_IMAGES="kms-connector-gw-listener kms-connector-kms-worker kms-connector-tx-sender kms-connector-db-migration"
+IMAGES=${*:-$RUST_IMAGES host-contracts gateway-contracts kms-core $CONNECTOR_IMAGES}
 
 want=$(cat "$ROOT/.fhevm-ref")
 have=$(git -C "$FHEVM_DIR" rev-parse HEAD)
@@ -61,6 +65,25 @@ build_gateway_contracts() {
     --label "fhevm.commit=$have" - < "$CTX/gc.tar"
 }
 
+build_kms_core() {
+  kms_have=$(git -C "$KMS_DIR" rev-parse HEAD)
+  tar -C "$KMS_DIR" -c --exclude=target --exclude=.git --exclude=node_modules . > "$CTX/kms.tar"
+  tar -C "$HERE" -r -f "$CTX/kms.tar" kms-core.Dockerfile
+  echo "== local/kms-core:$TAG (kms ${kms_have:0:8})"
+  docker build -f kms-core.Dockerfile -t "local/kms-core:$TAG" --label "kms.commit=$kms_have" - < "$CTX/kms.tar"
+}
+
+build_kms_connector() {
+  tar -C "$FHEVM_DIR" -c --exclude=target --exclude=node_modules --exclude=.git \
+      kms-connector gateway-contracts/rust_bindings host-contracts/rust_bindings shared > "$CTX/kc.tar"
+  tar -C "$HERE" -r -f "$CTX/kc.tar" kms-connector.Dockerfile
+  for t in "$@"; do
+    echo "== local/kms-connector-$t:$TAG (fhevm ${have:0:8})"
+    docker build -f kms-connector.Dockerfile --target "$t" -t "local/kms-connector-$t:$TAG" \
+      --label "fhevm.commit=$have" - < "$CTX/kc.tar"
+  done
+}
+
 rust=()
 for i in $IMAGES; do
   case " $RUST_IMAGES " in *" $i "*) rust+=("$i") ;; esac
@@ -68,6 +91,12 @@ done
 [ ${#rust[@]} -gt 0 ] && build_rust "${rust[@]}"
 case " $IMAGES " in *" host-contracts "*) build_host_contracts ;; esac
 case " $IMAGES " in *" gateway-contracts "*) build_gateway_contracts ;; esac
+case " $IMAGES " in *" kms-core "*) build_kms_core ;; esac
+conn=()
+for i in $IMAGES; do
+  case " $CONNECTOR_IMAGES " in *" $i "*) conn+=("${i#kms-connector-}") ;; esac
+done
+[ ${#conn[@]} -gt 0 ] && build_kms_connector "${conn[@]}"
 docker images 'local/*' --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
 
 if $LOAD; then
