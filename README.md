@@ -4,8 +4,8 @@ Local playground for running the Zama coprocessor on kind with the official Helm
 managed by Argo CD. Not meant for testnet or EKS. Later: MPC/KMS under `mpc/`.
 
 Differences from a real deployment: images are built locally (the upstream registry is private),
-Postgres runs in the cluster instead of RDS (on a PVC), minio stands in for S3, one anvil stands
-in for the host chain and another for Zama's Gateway chain. Chart, values layout and monitoring are the same.
+Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs), one anvil
+stands in for the host chain and another for Zama's Gateway chain. Chart, values layout and monitoring are the same.
 
 ## Layout
 

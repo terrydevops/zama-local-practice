@@ -1,5 +1,7 @@
-# Stand-in for S3. The setup job creates the per-coprocessor bucket and makes it public,
-# the same shape fhevm-cli's minio-setup uses.
+# Stand-in for S3, data on a PVC: a Deployment change replaced the pod once and every bucket
+# went with the emptyDir (ciphertexts, KMS material). The setup Job creates the buckets and
+# makes them public, the same shape fhevm-cli's minio-setup uses; re-run it (delete the Job)
+# if minio is ever started on an empty volume.
 # Credentials: Secret minio-credentials from cluster/bootstrap/secrets.sh.
 apiVersion: apps/v1
 kind: Deployment
@@ -8,6 +10,7 @@ metadata:
   namespace: infra
 spec:
   replicas: 1
+  strategy: { type: Recreate }   # one writer on the volume
   selector: { matchLabels: { app: minio } }
   template:
     metadata: { labels: { app: minio } }
@@ -30,7 +33,18 @@ spec:
             httpGet: { path: /minio/health/ready, port: 9000 }
             periodSeconds: 3
           volumeMounts: [ { name: data, mountPath: /data } ]
-      volumes: [ { name: data, emptyDir: {} } ]
+      volumes:
+        - name: data
+          persistentVolumeClaim: { claimName: minio-data }
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: minio-data
+  namespace: infra
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 10Gi } }
 ---
 apiVersion: v1
 kind: Service
