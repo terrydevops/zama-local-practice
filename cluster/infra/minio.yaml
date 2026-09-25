@@ -15,6 +15,9 @@ spec:
       containers:
         - name: minio
           image: quay.io/minio/minio
+          # quay.io stopped serving these images anonymously (unauthorized on pull); both nodes hold
+          # a copy loaded from the laptop, so never re-pull. A real deployment pins a digest in its own registry.
+          imagePullPolicy: IfNotPresent
           args: ["server", "/data", "--console-address", ":9001"]
           envFrom: [ { secretRef: { name: minio-credentials } } ]
           env:
@@ -56,6 +59,7 @@ spec:
       containers:
         - name: mc
           image: quay.io/minio/mc
+          imagePullPolicy: IfNotPresent
           envFrom: [ { secretRef: { name: minio-credentials } } ]
           command: ["/bin/sh", "-c"]
           args:
