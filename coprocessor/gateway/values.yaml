@@ -58,6 +58,10 @@ txSender:
     name: local/transaction-sender
     tag: dev
   replicas: 1
+  # this build talks HTTP to the Gateway (gw-listener keeps the WebSocket URL from commonConfig)
+  config:
+    gatewayUrl:
+      value: "http://anvil-gateway.infra.svc.cluster.local:8545"
   wallet:
     awsKms: { enabled: false }
     # practice: raw key in the generated Secret (testnet: AWS KMS key id from a ConfigMap)
