@@ -39,7 +39,7 @@ hostListenerShared:
     enabled: false
   resources:
     requests: { cpu: 100m, memory: 512Mi }
-    limits:   { cpu: "1", memory: 4Gi }    # activating a key means holding the ~500 MB server key in memory
+    limits:   { cpu: "2", memory: 16Gi }   # activating a key expands the compressed keyset in memory, like zkproof-worker's startup peak
 
 chains:
   - name: anvil
