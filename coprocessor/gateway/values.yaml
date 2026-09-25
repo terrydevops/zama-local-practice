@@ -64,6 +64,8 @@ txSender:
     secret:
       name: coprocessor-tx-sender
       key: private-key
+  # --multichain-acl-address is a v0.11 argument the chart still injects; this binary rejects it
+  disabledArgs: [multichain-acl-address]
   # operator values also pass --provider-max-retries and --txn-receipt-timeout-secs; this build
   # (fhevm 6eacc84f) does not have them
   extraArgs:
