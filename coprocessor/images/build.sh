@@ -1,8 +1,8 @@
 #!/bin/bash
 # Build the images this repo needs from the fhevm checkout and optionally load them into kind.
 #   ./build.sh [load] [image ...]
-# Images: tfhe-worker sns-worker zkproof-worker host-listener (Dockerfile, Rust workspace)
-#         host-contracts (host-contracts.Dockerfile, npm workspace)
+# Images: tfhe-worker sns-worker zkproof-worker host-listener gw-listener transaction-sender (Dockerfile, Rust workspace)
+#         host-contracts (host-contracts.Dockerfile, npm workspace), gateway-contracts (gateway-contracts.Dockerfile)
 # FHEVM_DIR overrides the checkout location (default: ../zama-ai-repos/fhevm next to this repo).
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -12,8 +12,8 @@ TAG=${TAG:-dev}
 CLUSTER=${KIND_CLUSTER:-zama-practice}
 LOAD=false
 if [ "${1:-}" = load ]; then LOAD=true; shift; fi
-RUST_IMAGES="tfhe-worker sns-worker zkproof-worker host-listener"
-IMAGES=${*:-$RUST_IMAGES host-contracts}
+RUST_IMAGES="tfhe-worker sns-worker zkproof-worker host-listener gw-listener transaction-sender"
+IMAGES=${*:-$RUST_IMAGES host-contracts gateway-contracts}
 
 want=$(cat "$ROOT/.fhevm-ref")
 have=$(git -C "$FHEVM_DIR" rev-parse HEAD)
@@ -50,12 +50,24 @@ build_host_contracts() {
     --label "fhevm.commit=$have" - < "$CTX/hc.tar"
 }
 
+build_gateway_contracts() {
+  tar -C "$FHEVM_DIR" -c --exclude=node_modules --exclude=artifacts --exclude=cache --exclude=typechain-types \
+      --exclude=addresses --exclude=.git \
+      gateway-contracts/package.json gateway-contracts/package-lock.json gateway-contracts/hardhat.config.ts \
+      gateway-contracts/tsconfig.json gateway-contracts/contracts gateway-contracts/tasks > "$CTX/gc.tar"
+  tar -C "$HERE" -r -f "$CTX/gc.tar" gateway-contracts.Dockerfile
+  echo "== local/gateway-contracts:$TAG (fhevm ${have:0:8})"
+  docker build -f gateway-contracts.Dockerfile -t "local/gateway-contracts:$TAG" \
+    --label "fhevm.commit=$have" - < "$CTX/gc.tar"
+}
+
 rust=()
 for i in $IMAGES; do
   case " $RUST_IMAGES " in *" $i "*) rust+=("$i") ;; esac
 done
 [ ${#rust[@]} -gt 0 ] && build_rust "${rust[@]}"
 case " $IMAGES " in *" host-contracts "*) build_host_contracts ;; esac
+case " $IMAGES " in *" gateway-contracts "*) build_gateway_contracts ;; esac
 docker images 'local/*' --format '{{.Repository}}:{{.Tag}}  {{.Size}}'
 
 if $LOAD; then

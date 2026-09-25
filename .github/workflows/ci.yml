@@ -26,6 +26,9 @@ jobs:
           dockerfile: coprocessor/images/host-contracts.Dockerfile
       - uses: hadolint/hadolint-action@v3.1.0
         with:
+          dockerfile: coprocessor/images/gateway-contracts.Dockerfile
+      - uses: hadolint/hadolint-action@v3.1.0
+        with:
           dockerfile: coprocessor/demo/Dockerfile
 
   manifests:
@@ -59,6 +62,10 @@ jobs:
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template host-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-contracts/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template gateway-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-contracts/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template coprocessor-gateway /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/gateway/values.yaml \
+            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the chain exporter (public sql_exporter chart)
         run: |
           helm repo add sql-exporter https://burningalchemist.github.io/sql_exporter/ >/dev/null
@@ -73,6 +80,6 @@ jobs:
         run: |
           kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS" \
             cluster/bootstrap/root-app.yaml \
-            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml \
+            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml cluster/infra/anvil-gateway.yaml \
             coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml \
             coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/add.yaml coprocessor/demo/k8s/transfer.yaml

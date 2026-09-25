@@ -126,6 +126,29 @@ type: Opaque
 stringData:
   private-key: $(key 11)
 YAML
+# Gateway chain: its own phrase, read from the upstream gateway-node template like the host one.
+GW_MNEMONIC=$(grep '^MNEMONIC=' "$FHEVM_DIR/test-suite/fhevm/templates/env/.env.gateway-node" | cut -d= -f2- | tr -d '"')
+[ -n "$GW_MNEMONIC" ] || { echo "could not read MNEMONIC from $FHEVM_DIR/test-suite/fhevm/templates/env/.env.gateway-node" >&2; exit 1; }
+gwkey() { cast wallet private-key --mnemonic "$GW_MNEMONIC" --mnemonic-index "$1"; }
+ensure anvil-gateway-mnemonic infra <<YAML
+# the gateway anvil funds 20 accounts from this phrase
+apiVersion: v1
+kind: Secret
+metadata: { name: anvil-gateway-mnemonic, namespace: infra }
+type: Opaque
+stringData:
+  MNEMONIC: "$GW_MNEMONIC"
+YAML
+ensure gateway-deployer coproc <<YAML
+# gateway contracts deploy Job: the deployer is account 1 of the gateway phrase, as in the upstream e2e env
+apiVersion: v1
+kind: Secret
+metadata: { name: gateway-deployer, namespace: coproc }
+type: Opaque
+stringData:
+  mnemonic: "$GW_MNEMONIC"
+  deployer-private-key: $(gwkey 1)
+YAML
 ensure demo-sender coproc <<YAML
 # coprocessor-demo Job: the account that deploys Add.sol and sends add(3,5), account 0 of the phrase
 apiVersion: v1

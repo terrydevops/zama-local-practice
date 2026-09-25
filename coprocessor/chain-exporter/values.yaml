@@ -48,6 +48,18 @@ config:
           query: |
             SELECT chain_id::text AS chain_id, extract(epoch FROM now() - max(created_at))::float AS age
             FROM host_chain_blocks_valid GROUP BY chain_id;
+        - metric_name: gateway_listener_last_block
+          type: gauge
+          help: 'Last Gateway block the gw-listener processed'
+          values: [last_block_num]
+          query: |
+            SELECT coalesce(max(last_block_num), 0)::float AS last_block_num FROM gw_listener_last_block;
+        - metric_name: ciphertext_digests_unsent
+          type: gauge
+          help: 'Digests sns-worker recorded that tx-sender has not yet sent to the Gateway'
+          values: [unsent]
+          query: |
+            SELECT count(*)::float AS unsent FROM ciphertext_digest WHERE NOT txn_is_sent;
         - metric_name: host_chain_computations_pending
           type: gauge
           help: 'Computations written by the listener that no worker has completed yet, per chain'

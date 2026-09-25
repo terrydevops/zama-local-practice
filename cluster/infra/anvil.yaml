@@ -177,7 +177,7 @@ spec:
   selector: { app: anvil }
   ports: [ { port: 8545, targetPort: 8545 } ]
 ---
-# Weekly restart: the init container compacts the state on every start. About a minute of
+# Weekly restart of both chains: the init container compacts the state on every start. About a minute of
 # chain downtime; the host-listener reconnects on its own.
 apiVersion: v1
 kind: ServiceAccount
@@ -193,7 +193,7 @@ metadata:
 rules:
   - apiGroups: ["apps"]
     resources: ["deployments"]
-    resourceNames: ["anvil"]
+    resourceNames: ["anvil", "anvil-gateway"]
     verbs: ["get", "patch"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
@@ -224,7 +224,7 @@ spec:
           containers:
             - name: kubectl
               image: bitnami/kubectl:1.35
-              command: ["kubectl", "-n", "infra", "rollout", "restart", "deployment/anvil"]
+              command: ["kubectl", "-n", "infra", "rollout", "restart", "deployment/anvil", "deployment/anvil-gateway"]
               resources:
                 requests: { cpu: 10m, memory: 32Mi }
                 limits:   { cpu: 200m, memory: 128Mi }

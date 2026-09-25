@@ -1,0 +1,83 @@
+# Local gateway chain: a second anvil (chain id 54321, 20 accounts, the upstream gateway-node
+# flags). Stands in for Zama's Arbitrum-stack Gateway chain that Conduit runs. Same state
+# handling as the host chain: check-state init container (script in anvil-state-tools),
+# bounded memory, weekly compaction restart from the anvil-compact CronJob.
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: anvil-gateway-config
+  namespace: infra
+data:
+  CHAIN_ID: "54321"
+# MNEMONIC comes from the generated Secret anvil-gateway-mnemonic (cluster/bootstrap/secrets.sh).
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: anvil-gateway-state
+  namespace: infra
+spec:
+  accessModes: [ReadWriteOnce]
+  resources: { requests: { storage: 1Gi } }
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: anvil-gateway
+  namespace: infra
+spec:
+  replicas: 1
+  strategy: { type: Recreate }   # one writer of the state file at a time
+  selector: { matchLabels: { app: anvil-gateway } }
+  template:
+    metadata: { labels: { app: anvil-gateway } }
+    spec:
+      securityContext: { fsGroup: 1000 }   # the anvil image runs as uid 1000 (foundry)
+      initContainers:
+        - name: check-state
+          image: python:3-alpine
+          command: ["python3", "/tools/check-state.py"]
+          env:
+            - { name: STATE, value: /data/anvil.json }
+            - { name: KEEP_BLOCKS, value: "20000" }   # about 5.5 hours of 1s blocks, plenty for listener catchup
+          securityContext: { runAsUser: 1000, runAsGroup: 1000 }
+          volumeMounts:
+            - { name: state, mountPath: /data }
+            - { name: tools, mountPath: /tools, readOnly: true }
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: "1", memory: 3Gi }      # the whole dump is parsed in memory
+      containers:
+        - name: anvil
+          image: ghcr.io/foundry-rs/foundry:v1.3.5
+          envFrom:
+            - configMapRef: { name: anvil-gateway-config }
+            - secretRef: { name: anvil-gateway-mnemonic }
+          command: ["sh", "-c"]
+          args:
+            - exec anvil --block-time 1 --host 0.0.0.0 --port 8545 --chain-id "$CHAIN_ID"
+              --accounts 20 --mnemonic "$MNEMONIC"
+              --state /data/anvil.json --state-interval 60
+          ports: [ { containerPort: 8545 } ]
+          volumeMounts: [ { name: state, mountPath: /data } ]
+          readinessProbe:
+            tcpSocket: { port: 8545 }
+            periodSeconds: 3
+          resources:
+            requests: { cpu: 100m, memory: 512Mi }
+            limits:   { cpu: "1", memory: 3Gi }      # a week of growth between compactions
+      volumes:
+        - name: state
+          persistentVolumeClaim: { claimName: anvil-gateway-state }
+        - name: tools
+          configMap: { name: anvil-state-tools }
+---
+# ClusterIP only; from the laptop use kubectl port-forward svc/anvil-gateway -n infra 8546:8545.
+apiVersion: v1
+kind: Service
+metadata:
+  name: anvil-gateway
+  namespace: infra
+spec:
+  selector: { app: anvil-gateway }
+  ports: [ { port: 8545, targetPort: 8545 } ]

@@ -4,8 +4,8 @@ Local playground for running the Zama coprocessor on kind with the official Helm
 managed by Argo CD. Not meant for testnet or EKS. Later: MPC/KMS under `mpc/`.
 
 Differences from a real deployment: images are built locally (the upstream registry is private),
-Postgres runs in the cluster instead of RDS (on a PVC), minio stands in for S3, anvil stands in
-for the host chain. Chart, values layout and monitoring are the same.
+Postgres runs in the cluster instead of RDS (on a PVC), minio stands in for S3, one anvil stands
+in for the host chain and another for Zama's Gateway chain. Chart, values layout and monitoring are the same.
 
 ## Layout
 
@@ -15,13 +15,15 @@ cluster/                      one cluster
   bootstrap/                  applied by hand, once: Argo CD install, root app, CoreDNS rewrite,
                               secrets.sh (generates secrets/generated.yaml, gitignored)
   apps/values.yaml            every Argo CD Application (argocd-apps chart values)
-  infra/                      Application "infra": postgres, minio, anvil
+  infra/                      Application "infra": postgres, minio, anvil (host chain), anvil-gateway
   platform/<name>/values.yaml third-party charts: monitoring, chaos-mesh
 coprocessor/                  everything specific to the coprocessor
   images/                     Dockerfiles (workers, host-listener, host-contracts) + build.sh
   workers/values.yaml         upstream chart, workers release (Application "coprocessor-workers")
   listeners/<chain>/values.yaml   upstream chart, one host-listener release per chain
-  host-contracts/             contracts chart values (deploy Job) + smoke.sh
+  host-contracts/             contracts chart values (host deploy Job) + smoke.sh + chain-reset.sh
+  gateway-contracts/values.yaml   contracts chart values (gateway deploy Job)
+  gateway/values.yaml         upstream chart, gateway release: gw-listener + tx-sender
   sql-exporter/values.yaml    upstream exporter chart values
   chain-exporter/values.yaml  public sql_exporter chart with our own chain-progress queries
   monitoring/                 alert rules + Grafana dashboard
@@ -41,8 +43,8 @@ Rules:
   and the chaos experiments are always applied by hand.
 - The coprocessor chart is installed as several releases, the way coprocessor-operator does it:
   workers, one listener per host chain, later the gateway side. Each is its own Application.
-- Sync waves: 0 infra, 1 monitoring and the host contracts Job, 2 workers and exporter,
-  3 listeners, rules and chaos, 4 demo. Application health checks are on, so a wave waits for
+- Sync waves: 0 infra (both chains), 1 monitoring and the host contracts Job, 2 gateway
+  contracts Job, workers and exporters, 3 listeners, gateway side, rules and chaos, 4 demo. Application health checks are on, so a wave waits for
   the previous one.
 - Every child Application carries the resources finalizer and the root prunes: removing or
   renaming an entry deletes the Application and everything it deployed.

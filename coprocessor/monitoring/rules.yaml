@@ -65,6 +65,20 @@ spec:
           annotations:
             summary: "chain {{ $labels.chain_id }}: no block validated for {{ $value | humanizeDuration }}"
             description: "The host chain stopped producing blocks or the listener lost it. Every coprocessor pod stays healthy in this state; check anvil in infra first, then the listener's RPC connection."
+        - alert: GatewayStalled
+          expr: increase(gateway_listener_last_block[5m]) == 0
+          for: 5m
+          labels: { severity: critical }
+          annotations:
+            summary: "gw-listener has not advanced on the Gateway for 5 minutes"
+            description: "The gateway chain stopped, or gw-listener lost its RPC. Digests and proof responses queue up in the database meanwhile."
+        - alert: CoprocessorDigestsUnsent
+          expr: ciphertext_digests_unsent > 0 and increase(ciphertext_digests_unsent[10m]) >= 0
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} digests waiting for tx-sender"
+            description: "sns-worker recorded digests that tx-sender has not delivered to the Gateway in 10 minutes: tx-sender down, no gas, or the Gateway rejecting the transactions."
         - alert: HostChainExporterDown
           expr: absent(host_chain_last_valid_block_age_seconds)
           for: 10m

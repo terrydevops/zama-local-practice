@@ -3,8 +3,8 @@
 #
 # Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
 # belongs to one system carries its prefix (coprocessor-*).
-# Waves: 0 infra -> 1 monitoring (CRDs), host contracts Job -> 2 workers, exporter
-# -> 3 listeners, rules, dashboard, chaos -> 4 demo.
+# Waves: 0 infra (both chains) -> 1 monitoring (CRDs), host contracts Job -> 2 gateway contracts
+# Job, workers, exporters -> 3 listeners, gateway side, rules, dashboard, chaos -> 4 demo.
 # The coprocessor chart is installed as several releases like coprocessor-operator does:
 # workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
 # previous one to be healthy.
@@ -118,6 +118,49 @@ applications:
         targetRevision: master
         ref: values
     destination: { server: https://kubernetes.default.svc, namespace: monitoring }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+
+  # Gateway contracts on the local gateway chain: a Job that deploys once and writes
+  # gw-sc-addresses. One wave after the host contracts: it registers the host chain with the
+  # addresses from eth-sc-addresses.
+  coprocessor-gateway-contracts:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/contracts
+        helm:
+          releaseName: gateway-contracts
+          valueFiles: [$values/coprocessor/gateway-contracts/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
+    syncPolicy:
+      automated: { prune: true, selfHeal: true }
+      syncOptions: [CreateNamespace=true, Replace=true]
+
+  # Gateway side of the coprocessor: gw-listener and tx-sender, one release like the operator's.
+  coprocessor-gateway:
+    namespace: argocd
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    finalizers: [resources-finalizer.argocd.argoproj.io]
+    project: practice
+    sources:
+      - repoURL: https://github.com/zama-ai/fhevm.git
+        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
+        path: charts/coprocessor
+        helm:
+          releaseName: coprocessor-gateway
+          valueFiles: [$values/coprocessor/gateway/values.yaml]
+      - repoURL: git@github.com:terrydevops/zama-local-practice.git
+        targetRevision: master
+        ref: values
+    destination: { server: https://kubernetes.default.svc, namespace: coproc }
     syncPolicy:
       automated: { prune: true, selfHeal: true }
 

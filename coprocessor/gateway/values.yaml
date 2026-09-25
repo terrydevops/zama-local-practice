@@ -1,0 +1,99 @@
+# Gateway-side release of the upstream chart fhevm/charts/coprocessor, same split as
+# coprocessor-operator/helm-values/*/values-gw-coprocessor-*.yaml: gw-listener (ears on the
+# Gateway: key generation, input verification requests, drift) and tx-sender (mouth: digests
+# and proof responses to the Gateway). Contract addresses come from the gw-sc-addresses
+# ConfigMap the coprocessor-gateway-contracts Job writes. Differences from testnet are marked
+# "practice:".
+#
+# Deployed by Argo CD (coprocessor-gateway in cluster/apps/values.yaml) from the chart at
+# .fhevm-ref. Render locally: coprocessor/scripts/deploy.sh render
+
+commonConfig:
+  databaseUser:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: username } }
+  databasePassword:
+    valueFrom: { secretKeyRef: { name: coprocessor-db, key: password } }
+  databaseEndpoint:
+    value: "postgres.infra.svc.cluster.local:5432"
+  databaseUrl: "postgresql://$(DATABASE_USER):$(DATABASE_PASSWORD)@$(DATABASE_ENDPOINT)/coprocessor"
+  # practice: the local gateway anvil (testnet: Conduit RPC from the conduit-credentials Secret)
+  gatewayUrl:
+    value: "ws://anvil-gateway.infra.svc.cluster.local:8545"
+  gatewayContractAddresses:
+    inputVerification:
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: input_verification.address } }
+    ciphertextCommits:
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: ciphertext_commits.address } }
+    gatewayConfig:
+      valueFrom: { configMapKeyRef: { name: gw-sc-addresses, key: gateway_config.address } }
+  tracing:
+    enabled: false
+
+gatewayContractConfigMap:
+  enabled: false     # written by the deploy Job, not rendered here
+
+gwListener:
+  enabled: true
+  image:
+    name: local/gw-listener          # practice: built by coprocessor/images/build.sh
+    tag: dev
+  replicas: 1
+  extraArgs:
+    - --verify-proof-req-database-channel=event_zkpok_new_work
+    - --database-pool-size=16
+    - --error-sleep-initial-secs=1
+    - --error-sleep-max-secs=10
+    - --get-logs-poll-interval=1s
+    - --get-logs-block-batch-size=100
+    - --drift-auto-revert-enabled
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+txSender:
+  enabled: true
+  image:
+    name: local/transaction-sender
+    tag: dev
+  replicas: 1
+  wallet:
+    awsKms: { enabled: false }
+    # practice: raw key in the generated Secret (testnet: AWS KMS key id from a ConfigMap)
+    secret:
+      name: coprocessor-tx-sender
+      key: private-key
+  # operator values also pass --provider-max-retries and --txn-receipt-timeout-secs; this build
+  # (fhevm 6eacc84f) does not have them
+  extraArgs:
+    - --database-pool-size=10
+    - --database-polling-interval-secs=1
+    - --verify-proof-resp-batch-limit=128
+    - --verify-proof-resp-max-retries=6
+    - --verify-proof-remove-after-max-retries
+    - --add-ciphertexts-batch-limit=10
+    - --add-ciphertexts-max-retries=2147483647
+    - --error-sleep-initial-secs=1
+    - --error-sleep-max-secs=4
+    - --review-after-unlimited-retries=30
+    - --gas-limit-overprovision-percent=300
+    - --provider-retry-interval=4s
+  serviceMonitor:
+    enabled: true
+  resources:
+    requests: { cpu: 100m, memory: 256Mi }
+    limits:   { cpu: "1", memory: 1Gi }
+
+# ---------------------------------------------------------------- everything else off
+tfheWorker:        { enabled: false }
+zkProofWorker:     { enabled: false }
+snsWorker:         { enabled: false }
+dbMigration:       { enabled: false }
+hostContractConfigMap:         { enabled: false }
+hostListenerShared:            { enabled: false }
+hostListenerPollerShared:      { enabled: false }
+hostListenerCatchupOnlyShared: { enabled: false }
+hostListenerConsumerShared:    { enabled: false }
+upgradeController: { enabled: false }
+consensusDetector: { enabled: false }
