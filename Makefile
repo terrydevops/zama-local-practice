@@ -3,7 +3,7 @@
 #   make down      delete the kind cluster
 #   make job       inject 20 ERC20 transfers and create dependence chains
 #   make watch     pipeline counters
-#   make demo      encrypt 3 and 5, add, decrypt: Argo CD sync of coprocessor-demo
+#   make demo      3 + 5 and a confidential transfer, decrypted by the KMS: Argo CD sync of coprocessor-demo
 #   make smoke     one trivialEncrypt on the anvil chain, watched through listener and workers
 #   make lint      what CI runs
 SHELL := /bin/bash

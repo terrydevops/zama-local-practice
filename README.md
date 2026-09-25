@@ -86,27 +86,32 @@ scripts the Makefile calls. UIs: `make argocd-ui` (:8080), `make grafana` (:1300
 ## End-to-end checks
 
 `coprocessor/demo/` runs contracts on the anvil chain and follows their results through the
-coprocessor: host-listener turns the events into computations, tfhe-worker computes,
-sns-worker uploads, and the runner decrypts the result handles with the test client key.
+whole system: host-listener turns the events into computations, tfhe-worker computes,
+sns-worker uploads the ciphertext to the bucket, transaction-sender commits its digest on the
+gateway; the runner then sends a public decryption request to the gateway's `Decryption`
+contract, kms-connector picks it up, checks the host ACL, fetches the ciphertext, and the KMS
+answers on the gateway chain. The runner reads the answer from the `PublicDecryptionResponse`
+event. Nothing outside the KMS holds a decryption key.
 Two scenarios, each an Argo CD sync-hook Job of the `coprocessor-demo` application:
 
-- `add`: `contracts/src/Add.sol` encrypts 3 and 5, adds them and allows the caller, in one
-  transaction. Prints `3 + 5 = 8 (on chain)`.
+- `add`: `contracts/src/Add.sol` encrypts 3 and 5, adds them, allows the caller and makes
+  the sum publicly decryptable, in one transaction. Prints `3 + 5 = 8`.
 - `transfer`: `contracts/src/PracticeToken.sol` inherits the upstream `EncryptedERC20`
-  example unchanged. Mint 1000, transfer 250, then try to transfer 900: the contract moves an
-  encrypted 0 instead and the chain shows the same Transfer event either way. Both balances
-  are decrypted and must read 750 and 250.
+  example. Mint 1000, transfer 250, then try to transfer 900: the contract moves an
+  encrypted 0 instead and the chain shows the same Transfer event either way. Balances are
+  private until the practice-only `reveal` marks them publicly decryptable (the runner prints
+  the ACL answer before and after); the KMS then returns 750 and 250.
 
 ```bash
-coprocessor/demo/run.sh [add|transfer]   # from the laptop: forge build, port-forward anvil, cargo run
+coprocessor/demo/run.sh [add|transfer]   # from the laptop: forge build, port-forward both anvils, cargo run
 make demo-image                          # build local/coprocessor-demo:dev (forge stage + Rust), load into kind
 make demo                                # sync the coprocessor-demo app == run both Jobs, print their logs
 ```
 
-The client key only exists in the test keyset; on a real network decryption goes through
-the KMS, which this setup does not have. Encrypted inputs with proofs (`transfer` with an
-`externalEuint64`) need the gateway, which is not here either; `transferPlain` encrypts the
-amount inside the contract instead.
+Local-only shortcuts, all in the runner: the sender gives itself gas on the gateway anvil, and
+the fee is paid with the mocked ZAMA token that `deployAllGatewayContractsForTests` deploys,
+minted on the spot. Encrypted inputs with proofs (`transfer` with an `externalEuint64`) need
+the relayer, which is not here; `transferPlain` encrypts the amount inside the contract instead.
 
 ## Notes
 

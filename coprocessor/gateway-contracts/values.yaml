@@ -34,7 +34,9 @@ scDeploy:
     - name: DEPLOYER_PRIVATE_KEY
       valueFrom: { secretKeyRef: { name: gateway-deployer, key: deployer-private-key } }
     - { name: DEPLOYER_ADDRESS, value: "0xCf28E90D4A6dB23c34E1881aEF5fd9fF2e478634" }
-    # pre-computed addresses the deploy expects (deterministic: same deployer, fresh chain)
+    # pre-computed addresses the deploy expects (deterministic: same deployer, fresh chain).
+    # ZamaOFT is the deployer's nonce-0 address: deployAllGatewayContractsForTests deploys the
+    # mocked fee token first, and ProtocolPayment is compiled with this constant.
     - { name: ZAMA_OFT_ADDRESS, value: "0x5ffdaAB0373E62E2ea2944776209aEf29E631A64" }
     - { name: FEES_SENDER_TO_BURNER_ADDRESS, value: "0x0000111122223333444455556666777788889999" }
     - { name: GATEWAY_CONFIG_ADDRESS, value: "0x576Ea67208b146E63C5255d0f90104E25e3e04c7" }
@@ -82,7 +84,9 @@ scDeploy:
     # order: KMS first, then contracts take the discovered signer)
     - until key=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/?list-type=2&prefix=PUB/VerfAddress/" | grep -oE "<Key>[^<]+</Key>" | head -1 | sed "s#<Key>##;s#</Key>##") && [ -n "$key" ]; do echo "waiting for the KMS signing key in kms-public"; sleep 5; done
     - export KMS_SIGNER_ADDRESS_0=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/$key"); echo "KMS signer $KMS_SIGNER_ADDRESS_0"
-    - npx hardhat task:deployAllGatewayContracts
+    # ForTests: also deploys the mocked ZamaOFT that pays the decryption fees (the real one is
+    # bridged in from Ethereum). Without it every decryption request reverts on the fee.
+    - npx hardhat task:deployAllGatewayContractsForTests
     # --use-internal-proxy-address reads the proxy addresses this deploy just wrote instead of the
     # GATEWAY_CONFIG_ADDRESS env var, as the upstream e2e stack does. Host chains are registered
     # by coprocessor-gateway-host-chains once the host contracts exist.

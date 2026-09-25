@@ -12,11 +12,8 @@ CLUSTER=${KIND_CLUSTER:-zama-practice}
 
 export DOCKER_BUILDKIT=1
 CTX=$(mktemp -d); trap 'rm -rf "$CTX"' EXIT
-tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git --exclude=fhevm-keys --exclude=logs \
+tar -C "$PARENT" -c --exclude=target --exclude=node_modules --exclude=.git \
     --exclude=coprocessor/demo/contracts/out --exclude=coprocessor/demo/contracts/cache \
-    zama-ai-repos/fhevm/coprocessor/proto zama-ai-repos/fhevm/coprocessor/fhevm-engine \
-    zama-ai-repos/fhevm/listener zama-ai-repos/fhevm/shared \
-    zama-ai-repos/fhevm/host-contracts/rust_bindings zama-ai-repos/fhevm/gateway-contracts/rust_bindings \
     zama-ai-repos/fhevm/library-solidity/lib zama-ai-repos/fhevm/library-solidity/config \
     zama-ai-repos/fhevm/host-contracts/lib zama-ai-repos/fhevm/host-contracts/contracts/shared/FheType.sol \
     zama-ai-repos/fhevm/host-contracts/examples/EncryptedERC20.sol \
