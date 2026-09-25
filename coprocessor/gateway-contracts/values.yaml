@@ -6,11 +6,14 @@
 # the deployer key comes from the generated Secret gateway-deployer (account 1 of the gateway
 # phrase, as upstream).
 #
-# Order, as in the upstream e2e stack: gateway contracts first (they need nothing from the host
-# chain), host contracts second (their KMSVerifier and InputVerifier embed the gateway's
-# Decryption and InputVerification addresses), then the host chain is registered on the
-# GatewayConfig (coprocessor-gateway-host-chains). The pre-computed addresses in the upstream
-# templates do not match this commit's deploy order, so nothing here relies on them.
+# Order, as in the upstream e2e stack: KMS core first (its signing key address is read from the
+# kms-public bucket here), gateway contracts (they need nothing from the host chain), host
+# contracts (their KMSVerifier and InputVerifier embed the gateway's Decryption and
+# InputVerification addresses), then the host chain is registered on the GatewayConfig
+# (coprocessor-gateway-host-chains). The pre-computed addresses in the upstream templates do
+# not match this commit's deploy order, so nothing here relies on them. The KMS context switch
+# (updateKmsContext) needs per-node TLS material the centralized insecure core does not have,
+# so the signer must be right at deploy time.
 #
 # Deployed by Argo CD (coprocessor-gateway-contracts in cluster/apps/values.yaml) into coproc.
 
@@ -48,7 +51,7 @@ scDeploy:
     - { name: KMS_CONTEXT_ID, value: "3166189940082864718613269121331309980362851143201109172953918312716374638593" }
     - { name: NUM_KMS_NODES, value: "1" }
     - { name: KMS_TX_SENDER_ADDRESS_0, value: "0x31de9c8ac5ecd5eaceddddee531e9bad8ac9c2a5" }
-    - { name: KMS_SIGNER_ADDRESS_0, value: "0x0Ea5BA6Bdb66553ED882CDB7cc78630340e0F031" }
+    # KMS_SIGNER_ADDRESS_0 is discovered from the kms-public bucket at deploy time (see deployCommands)
     - { name: KMS_NODE_IP_ADDRESS_0, value: "127.0.0.1" }
     - { name: KMS_NODE_STORAGE_URL_0, value: "http://minio.infra.svc.cluster.local:9000/kms-public" }
     # the one coprocessor: its tx-sender and signer are the sns-worker wallet (host phrase,
@@ -74,6 +77,11 @@ scDeploy:
     # practice only: the coprocessor's tx-sender wallet is not one of the gateway anvil's funded
     # accounts, so give it gas here (a real operator funds its own wallet)
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$COPROCESSOR_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
+    - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$KMS_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
+    # the KMS signing key lives in the public kms-public bucket; register its address (upstream
+    # order: KMS first, then contracts take the discovered signer)
+    - until key=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/?list-type=2&prefix=PUB/VerfAddress/" | grep -oE "<Key>[^<]+</Key>" | head -1 | sed "s#<Key>##;s#</Key>##") && [ -n "$key" ]; do echo "waiting for the KMS signing key in kms-public"; sleep 5; done
+    - export KMS_SIGNER_ADDRESS_0=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/$key"); echo "KMS signer $KMS_SIGNER_ADDRESS_0"
     - npx hardhat task:deployAllGatewayContracts
     # --use-internal-proxy-address reads the proxy addresses this deploy just wrote instead of the
     # GATEWAY_CONFIG_ADDRESS env var, as the upstream e2e stack does. Host chains are registered

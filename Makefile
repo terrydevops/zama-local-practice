@@ -57,8 +57,8 @@ render:
 # Every upstream chart source in cluster/apps/values.yaml must pin the commit in .fhevm-ref.
 check-ref:
 	@ref=$$(cat .fhevm-ref); n=$$(grep -c "targetRevision: $$ref" cluster/apps/values.yaml); \
-	if [ "$$n" = 10 ]; then echo "cluster/apps/values.yaml pins fhevm $${ref:0:8} ($$n sources)"; \
-	else echo "cluster/apps/values.yaml must pin .fhevm-ref ($$ref) on all ten upstream chart sources, found $$n" >&2; exit 1; fi
+	if [ "$$n" = 9 ]; then echo "cluster/apps/values.yaml pins fhevm $${ref:0:8} ($$n sources)"; \
+	else echo "cluster/apps/values.yaml must pin .fhevm-ref ($$ref) on all nine upstream chart sources, found $$n" >&2; exit 1; fi
 
 lint: check-ref
 	shellcheck $$(git ls-files '*.sh')

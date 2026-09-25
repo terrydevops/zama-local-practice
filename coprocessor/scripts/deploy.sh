@@ -18,7 +18,6 @@ case "${1:-}" in
     helm template gateway-host-chains "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/gateway-host-chains/values.yaml"
     helm template coprocessor-gateway "$FHEVM_DIR/charts/coprocessor" -n coproc -f "$ROOT/coprocessor/gateway/values.yaml"
     helm template kms-connector "$FHEVM_DIR/charts/kms-connector" -n coproc -f "$ROOT/coprocessor/kms-connector/values.yaml"
-    helm template gateway-kms-context "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/gateway-kms-context/values.yaml"
     helm template host-kms-keygen "$FHEVM_DIR/charts/contracts" -n coproc -f "$ROOT/coprocessor/host-kms-keygen/values.yaml" ;;
   status) kubectl --context "$CTX" get pods -n coproc -o wide ;;
   logs)

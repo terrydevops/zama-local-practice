@@ -37,7 +37,7 @@ scDeploy:
     - { name: USER_DECRYPTION_THRESHOLD, value: "1" }
     - { name: KMS_GEN_THRESHOLD, value: "1" }
     - { name: MPC_THRESHOLD, value: "1" }
-    - { name: KMS_SIGNER_ADDRESS_0, value: "0x0Ea5BA6Bdb66553ED882CDB7cc78630340e0F031" }
+    # KMS_SIGNER_ADDRESS_0 is discovered from the kms-public bucket at deploy time (see deployCommands)
     - { name: KMS_TX_SENDER_ADDRESS_0, value: "0x31de9c8ac5ecd5eaceddddee531e9bad8ac9c2a5" }
     - { name: KMS_NODE_STORAGE_URL_0, value: "http://minio.infra.svc.cluster.local:9000/kms-public" }
     - { name: KMS_NODE_IP_0, value: "127.0.0.1" }
@@ -59,6 +59,10 @@ scDeploy:
     # the chain lives in another Application; Argo CD's wave gating does not cover changes
     # inside an Application that was already healthy, so wait for the RPC ourselves
     - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
+    # the KMS signing key lives in the public kms-public bucket; register its address (upstream
+    # order: KMS first, then contracts take the discovered signer)
+    - until key=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/?list-type=2&prefix=PUB/VerfAddress/" | grep -oE "<Key>[^<]+</Key>" | head -1 | sed "s#<Key>##;s#</Key>##") && [ -n "$key" ]; do echo "waiting for the KMS signing key in kms-public"; sleep 5; done
+    - export KMS_SIGNER_ADDRESS_0=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/$key"); echo "KMS signer $KMS_SIGNER_ADDRESS_0"
     - npx hardhat task:deployAllHostContracts --with-kms-generation true
     - npx hardhat task:addHostPausers --use-internal-proxy-address true
   resources:

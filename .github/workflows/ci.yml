@@ -70,8 +70,6 @@ jobs:
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template kms-connector /tmp/fhevm/charts/kms-connector -n coproc -f coprocessor/kms-connector/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template gateway-kms-context /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-kms-context/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
           helm template host-kms-keygen /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-kms-keygen/values.yaml \
             | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
       - name: render + validate the chain exporter (public sql_exporter chart)

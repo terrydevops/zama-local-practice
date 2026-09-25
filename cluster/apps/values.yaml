@@ -3,9 +3,9 @@
 #
 # Naming: shared components use the bare name (infra, monitoring, chaos-mesh); anything that
 # belongs to one system carries its prefix (coprocessor-*).
-# Waves: 0 infra (both chains) -> 1 monitoring (CRDs), gateway contracts Job -> 2 host contracts
-# Job, workers, exporters, kms-core -> 3 host chain registration, gateway KMS context, listeners,
-# gateway side, kms-connector, rules, chaos -> 4 host KMS keygen, demo.
+# Waves: 0 infra (both chains) -> 1 monitoring (CRDs), kms-core -> 2 gateway contracts Job, workers,
+# exporters -> 3 host contracts Job, rules, chaos -> 4 host chain registration, listeners, gateway
+# side, kms-connector -> 5 host KMS keygen, demo. Contracts take the KMS signer from the bucket.
 # The coprocessor chart is installed as several releases like coprocessor-operator does:
 # workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
 # previous one to be healthy.
@@ -64,7 +64,7 @@ applications:
   # After the gateway contracts: KMSVerifier and InputVerifier embed two gateway addresses.
   coprocessor-host-contracts:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -133,7 +133,7 @@ applications:
   # gw-sc-addresses. First of the contract Jobs: it needs nothing from the host chain.
   coprocessor-gateway-contracts:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -157,10 +157,11 @@ applications:
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
 
   # Centralized KMS core: plain manifests (see coprocessor/kms-core/kms-core.yaml for why not the
-  # upstream chart). Generates its signing key on first start and publishes it to kms-public.
+  # upstream chart). Generates its signing key on first start and publishes it to kms-public; the
+  # contract deploys read the address from there, so it comes before them.
   kms-core:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "2" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "1" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     source:
@@ -174,7 +175,7 @@ applications:
   # KMS side of the protocol: gw-listener, kms-worker, tx-sender and their database migration.
   kms-connector:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -194,33 +195,10 @@ applications:
         limit: 5
         backoff: { duration: 30s, factor: 2, maxDuration: 5m }
 
-  # Points the Gateway at the KMS that runs here (new KMS context with the discovered signer).
-  coprocessor-gateway-kms-context:
-    namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
-    finalizers: [resources-finalizer.argocd.argoproj.io]
-    project: practice
-    sources:
-      - repoURL: https://github.com/zama-ai/fhevm.git
-        targetRevision: 6eacc84f76bf058e79571d5ca7a04d53528ecdaa
-        path: charts/contracts
-        helm:
-          releaseName: gateway-kms-context
-          valueFiles: [$values/coprocessor/gateway-kms-context/values.yaml]
-      - repoURL: git@github.com:terrydevops/zama-local-practice.git
-        targetRevision: master
-        ref: values
-    destination: { server: https://kubernetes.default.svc, namespace: coproc }
-    syncPolicy:
-      automated: { prune: true, selfHeal: true }
-      retry:
-        limit: 5
-        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
-
-  # Host chain: KMS context and epoch on ProtocolConfig, then key and CRS generation requests.
+  # Host chain: key and CRS generation requests once the connector listens.
   coprocessor-host-kms-keygen:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "5" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -243,7 +221,7 @@ applications:
   # Registers host chain 12345 on the GatewayConfig once both contract sets exist.
   coprocessor-gateway-host-chains:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -267,7 +245,7 @@ applications:
   # Gateway side of the coprocessor: gw-listener and tx-sender, one release like the operator's.
   coprocessor-gateway:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -287,7 +265,7 @@ applications:
   # host-listener for the anvil chain, one release per chain.
   coprocessor-anvil-listener:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "3" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     sources:
@@ -363,7 +341,7 @@ applications:
   # End-to-end check as a Sync-hook Job. Manual sync only: sync == run the check (make demo).
   coprocessor-demo:
     namespace: argocd
-    additionalAnnotations: { argocd.argoproj.io/sync-wave: "4" }
+    additionalAnnotations: { argocd.argoproj.io/sync-wave: "5" }
     finalizers: [resources-finalizer.argocd.argoproj.io]
     project: practice
     source:

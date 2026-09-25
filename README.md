@@ -25,8 +25,7 @@ coprocessor/                  everything specific to the coprocessor
   gateway-contracts/values.yaml   contracts chart values (gateway deploy Job)
   gateway-host-chains/values.yaml contracts chart values (register the host chain on the Gateway)
   gateway/values.yaml         upstream chart, gateway release: gw-listener + tx-sender
-  gateway-kms-context/values.yaml contracts chart Job: new KMS context on the Gateway
-  host-kms-keygen/values.yaml contracts chart Job: KMS context on the host chain, key + CRS requests
+  host-kms-keygen/values.yaml contracts chart Job: key + CRS generation requests on the host chain
   kms-core/                   centralized KMS core, plain manifests
   kms-connector/values.yaml   upstream chart: the KMS side's gw-listener, kms-worker, tx-sender
   sql-exporter/values.yaml    upstream exporter chart values
@@ -48,10 +47,10 @@ Rules:
   and the chaos experiments are always applied by hand.
 - The coprocessor chart is installed as several releases, the way coprocessor-operator does it:
   workers, one listener per host chain, later the gateway side. Each is its own Application.
-- Sync waves: 0 infra (both chains), 1 monitoring and the gateway contracts Job, 2 host
-  contracts Job, workers and exporters, 3 host chain registration, listeners, gateway side,
-  rules and chaos, 4 demo. Contracts go gateway, host, registration, like the upstream e2e
-  stack: the host contracts embed two gateway addresses. Application health checks are on, so a wave waits for
+- Sync waves: 0 infra (both chains), 1 monitoring and kms-core, 2 gateway contracts Job, workers
+  and exporters, 3 host contracts Job, rules and chaos, 4 host chain registration, listeners,
+  gateway side and kms-connector, 5 key generation and demo. Like the upstream e2e stack: the
+  KMS comes first so the contracts register its real signer, then gateway, host, registration. Application health checks are on, so a wave waits for
   the previous one.
 - Every child Application carries the resources finalizer and the root prunes: removing or
   renaming an entry deletes the Application and everything it deployed.

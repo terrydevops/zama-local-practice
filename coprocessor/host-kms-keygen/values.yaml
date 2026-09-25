@@ -1,6 +1,6 @@
-# Host chain side of the KMS bring-up (upstream: the host-sc steps after the deploy): define the
-# KMS context and epoch on ProtocolConfig with the discovered signer, fund the connector's
-# tx-sender, then ask KMSGeneration for a key and a CRS. kms-connector picks the requests up
+# Host chain side of the KMS bring-up (upstream: the host-sc steps after the deploy): fund the
+# connector's tx-sender, then ask KMSGeneration for a key and a CRS. The KMS signer was
+# registered at deploy time, so no context switch is needed. kms-connector picks the requests up
 # from this chain, kms-core generates, tx-sender answers, and the coprocessor's host-listener
 # downloads the material into the keys table. Same chart and image as the host deploy, same
 # addresses volume.
@@ -46,19 +46,13 @@ scDeploy:
     - { name: KMS_NODE_STORAGE_PREFIX_0, value: "kms-node-0" }
     - { name: KMS_SOFTWARE_VERSION, value: "0.1.0" }
     - { name: KMS_PCR_VALUES, value: '[{"pcr0":"0x00","pcr1":"0x00","pcr2":"0x00"}]' }
-    # a new context id: the initial one was set at deploy with the template signer
-    - { name: KMS_CONTEXT_ID, value: "3166189940082864718613269121331309980362851143201109172953918312716374638594" }
   deployCommands:
     - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
     # practice only: gas for the connector's tx-sender on the host chain
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$KMS_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
-    # the KMS signing key lives in the public kms-public bucket; read its address from there
-    - until key=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/?list-type=2&prefix=PUB/VerfAddress/" | grep -oE "<Key>[^<]+</Key>" | head -1 | sed "s#<Key>##;s#</Key>##") && [ -n "$key" ]; do echo "waiting for the KMS signing key in kms-public"; sleep 5; done
-    - export KMS_SIGNER_ADDRESS_0=$(curl -sf "http://minio.infra.svc.cluster.local:9000/kms-public/$key"); echo "KMS signer $KMS_SIGNER_ADDRESS_0"
-    - npx hardhat task:defineNewKmsContextAndEpoch --use-internal-proxy-address true
     - npx hardhat task:triggerKeygen --params-type 0 --use-internal-proxy-address true
     - npx hardhat task:triggerCrsgen --params-type 0 --max-bit-length 2048 --use-internal-proxy-address true
-    - printf 'KMS_SIGNER_ADDRESS=%s\n' "$KMS_SIGNER_ADDRESS_0" > addresses/.env.kmskeygen
+    - printf 'KMS_KEYGEN_REQUESTED=%s\n' "$(date -u +%Y%m%dT%H%M%SZ)" > addresses/.env.kmskeygen
   resources:
     requests: { cpu: 500m, memory: 1Gi }
     limits:   { cpu: "2", memory: 3Gi }
