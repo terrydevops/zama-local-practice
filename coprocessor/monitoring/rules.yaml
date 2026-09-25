@@ -99,3 +99,47 @@ spec:
           labels: { severity: critical }
           annotations:
             summary: "{{ $labels.job }} metrics endpoint down"
+
+    # KMS side: kms-core (centralized, insecure build) and the three kms-connector components.
+    - name: kms
+      rules:
+        - alert: KmsDown
+          expr: up{job=~"kms-core|kms-connector-.*"} == 0
+          for: 2m
+          labels: { severity: critical }
+          annotations:
+            summary: "{{ $labels.job }} metrics endpoint down"
+            description: "Decryption requests on the gateway get no answer while any KMS piece is down."
+
+        - alert: KmsConnectorBacklog
+          expr: sum(kms_connector_unprocessed_operations) > 0
+          for: 5m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $value }} KMS responses not yet sent to the gateway"
+            description: "kms-connector tx-sender has had unsent responses for 5m: gateway RPC, wallet gas, or a contract revert (NotKmsSigner, wrong fee token)."
+
+        - alert: KmsConnectorErrors
+          expr: >
+            sum(increase(kms_connector_worker_grpc_request_sent_errors[15m]))
+            + sum(increase(kms_connector_worker_event_received_errors[15m]))
+            + sum(increase(kms_connector_tx_sender_response_received_errors[15m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "kms-connector reported errors in the last 15m"
+            description: "Worker could not reach kms-core, rejected an event (host ACL check, S3 fetch), or tx-sender got an error response."
+
+        - alert: KmsDecryptionSlow
+          expr: histogram_quantile(0.9, sum by (le) (rate(kms_connector_worker_decryption_latency_seconds_bucket[15m]))) > 30
+          for: 10m
+          labels: { severity: warning }
+          annotations:
+            summary: "p90 decryption latency {{ $value | humanizeDuration }}"
+            description: "kms-worker to kms-core round trip is slow: kms-core CPU, or the S3 ciphertext fetch."
+
+        - alert: KmsCoreDecryptionErrors
+          expr: sum(increase(kms_operation_errors_total{operation=~".*decrypt.*"}[15m])) > 0
+          labels: { severity: warning }
+          annotations:
+            summary: "kms-core failed decryption operations in the last 15m"
+            description: "Usually a key id the KMS does not hold (coprocessor and KMS disagree on the active key) or a bad ciphertext."
