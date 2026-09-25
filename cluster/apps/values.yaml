@@ -78,6 +78,11 @@ applications:
     syncPolicy:
       automated: { prune: true, selfHeal: true }
       syncOptions: [CreateNamespace=true, Replace=true]
+      # a failed Job fails the sync, and automated sync never retries a revision whose sync
+      # failed; retry so a transient failure (chain not up yet) does not need a human
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
 
   # Workers release of the upstream chart (helm release "coprocessor", so resource names,
   # alert selectors and chaos targets keep the plain coprocessor-* names).
@@ -143,6 +148,11 @@ applications:
     syncPolicy:
       automated: { prune: true, selfHeal: true }
       syncOptions: [CreateNamespace=true, Replace=true]
+      # a failed Job fails the sync, and automated sync never retries a revision whose sync
+      # failed; retry so a transient failure (chain not up yet) does not need a human
+      retry:
+        limit: 5
+        backoff: { duration: 30s, factor: 2, maxDuration: 5m }
 
   # Gateway side of the coprocessor: gw-listener and tx-sender, one release like the operator's.
   coprocessor-gateway:
