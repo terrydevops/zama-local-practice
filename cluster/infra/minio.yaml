@@ -47,7 +47,7 @@ metadata:
   name: minio-setup
   namespace: infra
   annotations:
-    argocd.argoproj.io/sync-options: Replace=true   # Jobs are immutable
+    argocd.argoproj.io/sync-options: Replace=true,Force=true   # Jobs are immutable: delete and recreate on change
 spec:
   backoffLimit: 10
   template:
