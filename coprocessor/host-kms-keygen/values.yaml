@@ -34,6 +34,7 @@ scDeploy:
     - { name: PUBLIC_DECRYPTION_THRESHOLD, value: "1" }
     - { name: USER_DECRYPTION_THRESHOLD, value: "1" }
     - { name: KMS_GENERATION_THRESHOLD, value: "1" }
+    - { name: KMS_GEN_THRESHOLD, value: "1" }        # the host tasks use this spelling
     - { name: MPC_THRESHOLD, value: "0" }
     - { name: KMS_TX_SENDER_ADDRESS_0, value: "0x31de9c8ac5ecd5eaceddddee531e9bad8ac9c2a5" }
     - { name: KMS_NODE_IP_ADDRESS_0, value: "127.0.0.1" }

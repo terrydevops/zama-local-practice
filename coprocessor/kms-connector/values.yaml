@@ -52,6 +52,8 @@ kmsConnectorDbMigration:
 
 kmsConnectorGwListener:
   enabled: true
+  tracing:
+    enabled: false   # practice: no OTLP collector
   image:
     name: local/kms-connector-gw-listener
     tag: dev
@@ -65,6 +67,8 @@ kmsConnectorGwListener:
 
 kmsConnectorKmsWorker:
   enabled: true
+  tracing:
+    enabled: false   # practice: no OTLP collector
   image:
     name: local/kms-connector-kms-worker
     tag: dev
@@ -89,6 +93,8 @@ kmsConnectorKmsWorker:
 
 kmsConnectorTxSender:
   enabled: true
+  tracing:
+    enabled: false   # practice: no OTLP collector
   image:
     name: local/kms-connector-tx-sender
     tag: dev
