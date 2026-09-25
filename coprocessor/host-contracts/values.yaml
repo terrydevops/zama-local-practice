@@ -52,6 +52,9 @@ scDeploy:
     - { name: NUM_PAUSERS, value: "1" }
     - { name: PAUSER_ADDRESS_0, value: "0xa44366bAA26296c1409AD1e284264212029F02f1" }
   deployCommands:
+    # the chain lives in another Application; Argo CD's wave gating does not cover changes
+    # inside an Application that was already healthy, so wait for the RPC ourselves
+    - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
     - npx hardhat task:deployAllHostContracts --with-kms-generation true
     - npx hardhat task:addHostPausers --use-internal-proxy-address true
   resources:

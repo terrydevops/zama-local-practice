@@ -72,6 +72,9 @@ scDeploy:
     - { name: PUBLIC_DECRYPTION_PRICE, value: "1000000000000000000" }
     - { name: USER_DECRYPTION_PRICE, value: "1000000000000000000" }
   deployCommands:
+    # the chain lives in another Application; Argo CD's wave gating does not cover changes
+    # inside an Application that was already healthy, so wait for the RPC ourselves
+    - until cast chain-id --rpc-url "$RPC_URL" >/dev/null 2>&1; do echo "waiting for $RPC_URL"; sleep 3; done
     # practice only: the coprocessor's tx-sender wallet is not one of the gateway anvil's funded
     # accounts, so give it gas here (a real operator funds its own wallet)
     - cast rpc --rpc-url "$RPC_URL" anvil_setBalance "$COPROCESSOR_TX_SENDER_ADDRESS_0" 0x3635C9ADC5DEA00000 >/dev/null
