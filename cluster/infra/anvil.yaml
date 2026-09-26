@@ -1,7 +1,7 @@
 # Local host chain: anvil with the same flags as the upstream test-suite host-node (1s blocks,
 # chain id 12345, 120 funded accounts, one slot per epoch so blocks finalize at once).
 #
-# State handling, learned the hard way (see the incident note in the study repo):
+# State handling, learned the hard way:
 # anvil dumps the whole chain to one JSON file; at one block per second that grows about
 # 135 MB a day and no anvil flag bounds it. A dump interrupted mid-write (the pod was
 # OOM-killed at 1Gi) left a truncated file and anvil crash-looped for two days.

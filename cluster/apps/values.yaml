@@ -7,11 +7,11 @@
 # exporters -> 3 host contracts Job, rules, chaos -> 4 host chain registration, listeners, gateway
 # side, kms-connector -> 5 host KMS keygen, demo. Contracts take the KMS signer from the bucket.
 # The coprocessor chart is installed as several releases like coprocessor-operator does:
-# workers, one listener per host chain, later the gateway side. Application health checks are on (argocd-values.yaml) so a wave waits for the
-# previous one to be healthy.
+# workers, one listener per host chain, the gateway side. Application health checks are on
+# (argocd-values.yaml) so a wave waits for the previous one to be healthy.
 # Every child carries the resources finalizer: removing or renaming an entry deletes the
 # Application and everything it deployed.
-# The two upstream chart sources pin the commit in .fhevm-ref; CI checks they match.
+# Every upstream chart source pins the commit in .fhevm-ref; CI checks they match.
 
 projects:
   practice:

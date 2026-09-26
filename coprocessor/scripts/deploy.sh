@@ -3,7 +3,7 @@
 # (cluster/apps/values.yaml); change a values file and push instead of helm upgrade.
 #   ./deploy.sh render                 render every coprocessor release (workers, listener, gateway, contracts)
 #   ./deploy.sh status                 pods in coproc
-#   ./deploy.sh logs <name> [lines]    tfhe-worker | sns-worker | zkproof-worker | host-listener
+#   ./deploy.sh logs <name> [lines]    tfhe-worker | sns-worker | zkproof-worker | host-listener | gw-listener | tx-sender | kms-*
 set -euo pipefail
 HERE=$(cd "$(dirname "$0")" && pwd)
 ROOT=$(cd "$HERE/../.." && pwd)

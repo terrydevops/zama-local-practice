@@ -1,5 +1,6 @@
-# Alerts for the two failure modes exercised by hand (C1: sns-worker down, C2: S3 unreachable).
-# Metric sources: pbs_completion from the sql-exporter, the rest from the workers themselves.
+# Alerts for the pipeline. The first group grew out of the two failure modes exercised by hand
+# (C1: sns-worker down, C2: S3 unreachable) and the chain incidents; metric sources are the
+# sql-exporter, the chain-exporter and the workers themselves.
 apiVersion: monitoring.coreos.com/v1
 kind: PrometheusRule
 metadata:

@@ -16,14 +16,13 @@ under the same license, see `LICENSE`.
 - Two on-chain checks that run as Argo CD sync hooks: an encrypted addition and a confidential
   ERC20 transfer. Both results are decrypted only by the KMS, through the Gateway; no key sits
   in the coprocessor database.
-- Monitoring the way an operator would want it: Prometheus rules for the workers, both chains
-  and the KMS side, a chain-progress exporter with its own SQL, a Grafana dashboard, and Chaos
+- Monitoring: Prometheus rules for the workers, both chains and the KMS side, a chain-progress exporter with its own SQL, a Grafana dashboard, and Chaos
   Mesh experiments (sns-worker outage, S3 partition).
 - The operational history is in the commits and in the values comments: an anvil state file
   truncated by an OOM kill (repaired, not reset), buckets lost to an emptyDir rollout, the memory
   a key activation really needs, a contracts deploy that succeeded with the wrong fee token.
 
-Status: frozen at this state.
+Status: finished, not being developed further.
 
 Differences from a real deployment: images are built locally (the upstream registry is private),
 Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs), one anvil
