@@ -3,6 +3,10 @@
 Local playground for running the Zama fhevm protocol on kind with the official Helm charts,
 managed by Argo CD. Not meant for testnet or EKS.
 
+A personal learning project, not affiliated with or endorsed by Zama. It only uses Zama's
+public repositories (fhevm, kms, coprocessor-operator, all BSD-3-Clause-Clear); this repo is
+under the same license, see `LICENSE`.
+
 ## What is here
 
 - The whole protocol path on one laptop cluster: a host chain, the coprocessor (host-listener,
