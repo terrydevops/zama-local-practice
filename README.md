@@ -1,7 +1,25 @@
 # zama-local-practice
 
-Local playground for running the Zama coprocessor on kind with the official Helm chart,
-managed by Argo CD. Not meant for testnet or EKS. Later: MPC/KMS under `mpc/`.
+Local playground for running the Zama fhevm protocol on kind with the official Helm charts,
+managed by Argo CD. Not meant for testnet or EKS.
+
+## What is here
+
+- The whole protocol path on one laptop cluster: a host chain, the coprocessor (host-listener,
+  tfhe / sns / zkproof workers, gw-listener, transaction-sender), a Gateway chain with its
+  contracts, a centralized KMS and its connector. 16 Argo CD Applications rendered from one
+  root, every image built from the upstream source at the commit in `.fhevm-ref`.
+- Two on-chain checks that run as Argo CD sync hooks: an encrypted addition and a confidential
+  ERC20 transfer. Both results are decrypted only by the KMS, through the Gateway; no key sits
+  in the coprocessor database.
+- Monitoring the way an operator would want it: Prometheus rules for the workers, both chains
+  and the KMS side, a chain-progress exporter with its own SQL, a Grafana dashboard, and Chaos
+  Mesh experiments (sns-worker outage, S3 partition).
+- The operational history is in the commits and in the values comments: an anvil state file
+  truncated by an OOM kill (repaired, not reset), buckets lost to an emptyDir rollout, the memory
+  a key activation really needs, a contracts deploy that succeeded with the wrong fee token.
+
+Status: frozen at this state.
 
 Differences from a real deployment: images are built locally (the upstream registry is private),
 Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs), one anvil
@@ -33,7 +51,6 @@ coprocessor/                  everything specific to the coprocessor
   monitoring/                 alert rules + Grafana dashboard
   demo/                       contracts + Rust runner: on-chain checks through the coprocessor (sync-hook Jobs)
   chaos/  seed/  jobs/  scripts/
-mpc/                          later, same shape
 ```
 
 Rules:
@@ -46,7 +63,7 @@ Rules:
 - A directory is owned by Argo CD if `cluster/apps/values.yaml` points at it. `cluster/bootstrap/`
   and the chaos experiments are always applied by hand.
 - The coprocessor chart is installed as several releases, the way coprocessor-operator does it:
-  workers, one listener per host chain, later the gateway side. Each is its own Application.
+  workers, one listener per host chain, the gateway side. Each is its own Application.
 - Sync waves: 0 infra (both chains), 1 monitoring and kms-core, 2 gateway contracts Job, workers
   and exporters, 3 host contracts Job, rules and chaos, 4 host chain registration, listeners,
   gateway side and kms-connector, 5 key generation and demo. Like the upstream e2e stack: the
@@ -125,7 +142,7 @@ the relayer, which is not here; `transferPlain` encrypts the amount inside the c
   (with `answer auto`, otherwise glibc rejects the reply).
 - Only outputs that a contract allows (ACL.allow in the same transaction) get computed and
   uploaded; the listener inserts everything else as already completed. `make smoke` therefore
-  proves chain -> listener -> worker, not an upload. An on-chain add with allow is the next step.
+  proves chain -> listener -> worker, not an upload; `make demo` covers the rest.
 - The host chain is anvil with the upstream test-suite flags and mnemonic; the contracts deploy
   Job and `make smoke` use accounts derived from it. anvil keeps its state on a PVC. Without
   that a pod restart resets the chain to block 0 and the host-listener waits forever for a
