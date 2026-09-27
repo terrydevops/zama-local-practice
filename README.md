@@ -16,17 +16,78 @@ under the same license, see `LICENSE`.
 - Two on-chain checks that run as Argo CD sync hooks: an encrypted addition and a confidential
   ERC20 transfer. Both results are decrypted only by the KMS, through the Gateway; no key sits
   in the coprocessor database.
-- Monitoring: Prometheus rules for the workers, both chains and the KMS side, a chain-progress exporter with its own SQL, a Grafana dashboard, and Chaos
-  Mesh experiments (sns-worker outage, S3 partition).
+- Monitoring: Prometheus rules for the workers, both chains and the KMS side, a chain-progress
+  exporter with its own SQL, a Grafana dashboard, and Chaos Mesh experiments (sns-worker
+  outage, S3 partition).
 - The operational history is in the commits and in the values comments: an anvil state file
   truncated by an OOM kill (repaired, not reset), buckets lost to an emptyDir rollout, the memory
   a key activation really needs, a contracts deploy that succeeded with the wrong fee token.
 
 Status: finished, not being developed further.
 
-Differences from a real deployment: images are built locally (the upstream registry is private),
-Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs), one anvil
-stands in for the host chain and another for Zama's Gateway chain. Chart, values layout and monitoring are the same.
+## Architecture
+
+Everything below runs in one kind cluster. Solid arrows are the path of one encrypted
+operation from the transaction to its cleartext; the numbers give the order.
+
+```mermaid
+flowchart TB
+  demo[demo runner]
+
+  subgraph host["host chain: anvil 12345"]
+    hc["FHEVMExecutor, ACL, KMSVerifier, KMSGeneration"]
+  end
+
+  subgraph copro["coprocessor"]
+    hl[host-listener]
+    db[(postgres)]
+    tw[tfhe-worker]
+    sw[sns-worker]
+    tx[transaction-sender]
+    gl[gw-listener]
+  end
+
+  s3[("minio: coproc-0, kms-public")]
+
+  subgraph gw["Gateway chain: anvil 54321"]
+    gc["CiphertextCommits, Decryption, InputVerification, GatewayConfig"]
+  end
+
+  subgraph kms["KMS"]
+    kl[connector gw-listener]
+    kw[connector kms-worker]
+    kt[connector tx-sender]
+    kc[kms-core]
+  end
+
+  demo -- "1 add / transfer tx" --> hc
+  hc -- "2 events" --> hl
+  hl -- "3 computations" --> db
+  db -- "4 compute" --> tw --> db
+  db -- "5 squash" --> sw
+  sw -- "6 upload" --> s3
+  sw -- "7 digest" --> db
+  db --> tx -- "8 addCiphertextMaterial" --> gc
+  demo -- "9 publicDecryptionRequest" --> gc
+  gc -- "10 event" --> kl --> kw
+  kw -. "11 isAllowedForDecryption" .-> hc
+  kw -. "12 fetch ciphertext" .-> s3
+  kw -- "13 gRPC decrypt" --> kc
+  kw --> kt -- "14 publicDecryptionResponse" --> gc
+  gc -. "15 response event" .-> demo
+
+  gc -. "key and CRS requests, proof requests" .-> gl --> db
+  kc -. "signer address, public keys" .-> s3
+  hl -. "downloads activated keys" .-> s3
+```
+
+Dashed arrows are lookups and key material. The three workers read and write the same
+Postgres; zkproof-worker is deployed but idle, since nothing here submits inputs with proofs.
+
+Differences from a real deployment: images are built locally (the upstream registry is
+private), Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs),
+one anvil stands in for the host chain and another for Zama's Gateway chain, which is an
+Arbitrum-stack chain run by Conduit. Chart, values layout and monitoring are the same.
 
 ## Layout
 
