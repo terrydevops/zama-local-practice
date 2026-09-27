@@ -1,29 +1,45 @@
 # zama-local-practice
 
-Local playground for running the Zama fhevm protocol on kind with the official Helm charts,
-managed by Argo CD. Not meant for testnet or EKS.
+The Zama fhevm protocol running end to end on one kind cluster, managed the way an operator
+would manage it: the official Helm charts, Argo CD, monitoring, chaos experiments, a CI with
+secret and image scans. Built to see what happens to one encrypted transaction, and kept as a
+record of how the system was run.
 
-A personal learning project, not affiliated with or endorsed by Zama. It only uses Zama's
-public repositories (fhevm, kms, coprocessor-operator, all BSD-3-Clause-Clear); this repo is
-under the same license, see `LICENSE`.
+A personal project, not affiliated with or endorsed by Zama. It only uses Zama's public
+repositories (fhevm, kms, coprocessor-operator, all BSD-3-Clause-Clear); this repo is under
+the same license, see `LICENSE`. Status: finished, not being developed further.
+
+## Why
+
+The protocol is spread over several repositories and several roles: contracts on the host
+chain, half a dozen coprocessor services, a Gateway chain, a KMS. Reading the code does not
+show what happens to one operation. Here you send `add(3, 5)` to a contract and follow it:
+the listener picks up the event, a worker computes the ciphertext, it goes to a bucket, its
+digest is committed on the Gateway, the KMS checks the ACL and decrypts, and 8 comes back on
+chain. The diagram below is that path.
+
+The second point is the shape. The charts are installed as the releases the operator repo
+uses, every Application comes from one Argo CD root, credentials never enter git, images are
+built from the upstream source at a pinned commit. The failures met on the way (a truncated
+anvil state file, buckets lost to an emptyDir rollout, the memory a key activation needs, a
+deploy that succeeded with the wrong fee token) are kept in the commits and the comments.
+
+What it is not: a node that could join Zama's testnet or mainnet (coprocessors are
+registered through governance), or a production template (see the stand-ins under
+Architecture; the KMS is the single-node insecure build).
 
 ## What is here
 
-- The whole protocol path on one laptop cluster: a host chain, the coprocessor (host-listener,
-  tfhe / sns / zkproof workers, gw-listener, transaction-sender), a Gateway chain with its
-  contracts, a centralized KMS and its connector. 16 Argo CD Applications rendered from one
-  root, every image built from the upstream source at the commit in `.fhevm-ref`.
+- A host chain, the coprocessor (host-listener, tfhe / sns / zkproof workers, gw-listener,
+  transaction-sender), a Gateway chain with its contracts, a centralized KMS and its
+  connector. 16 Argo CD Applications rendered from one root, every image built from the
+  upstream source at the commit in `.fhevm-ref`.
 - Two on-chain checks that run as Argo CD sync hooks: an encrypted addition and a confidential
   ERC20 transfer. Both results are decrypted only by the KMS, through the Gateway; no key sits
   in the coprocessor database.
-- Monitoring: Prometheus rules for the workers, both chains and the KMS side, a chain-progress
-  exporter with its own SQL, a Grafana dashboard, and Chaos Mesh experiments (sns-worker
-  outage, S3 partition).
-- The operational history is in the commits and in the values comments: an anvil state file
-  truncated by an OOM kill (repaired, not reset), buckets lost to an emptyDir rollout, the memory
-  a key activation really needs, a contracts deploy that succeeded with the wrong fee token.
-
-Status: finished, not being developed further.
+- Prometheus rules for the workers, both chains and the KMS side, a chain-progress exporter
+  with its own SQL, a Grafana dashboard, and Chaos Mesh experiments (sns-worker outage, S3
+  partition).
 
 ## Architecture
 
@@ -84,10 +100,10 @@ flowchart TB
 Dashed arrows are lookups and key material. The three workers read and write the same
 Postgres; zkproof-worker is deployed but idle, since nothing here submits inputs with proofs.
 
-Differences from a real deployment: images are built locally (the upstream registry is
-private), Postgres runs in the cluster instead of RDS, minio stands in for S3 (both on PVCs),
-one anvil stands in for the host chain and another for Zama's Gateway chain, which is an
-Arbitrum-stack chain run by Conduit. Chart, values layout and monitoring are the same.
+Stand-ins: Postgres in the cluster instead of RDS, minio for S3 (both on PVCs), one anvil for
+the host chain and another for Zama's Gateway chain (an Arbitrum-stack chain run by Conduit),
+images built locally because the upstream registry is private. Chart, values layout and
+monitoring are the same as a real deployment.
 
 ## Layout
 
