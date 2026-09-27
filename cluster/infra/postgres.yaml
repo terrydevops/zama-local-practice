@@ -20,7 +20,7 @@ spec:
     spec:
       containers:
         - name: postgres
-          image: postgres:17
+          image: postgres:17.9
           envFrom: [ { secretRef: { name: postgres-credentials } } ]
           args: ["-c", "max_connections=200"]
           ports: [ { containerPort: 5432 } ]

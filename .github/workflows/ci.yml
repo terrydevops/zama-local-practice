@@ -1,91 +1,196 @@
+# Lint, workflow audit (zizmor), secret scan, manifest validation and image CVE scan (trivy).
+# Actions are pinned to commit shas and tool images to digests; the version comments are for
+# dependabot. The weekly run exists because pins do not change but advisories do.
 name: ci
+
 on:
   push:
     branches: [master]
   pull_request:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # ECR mirror first, ghcr rate-limits anonymous DB pulls
+  TRIVY_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+  TRIVY_JAVA_DB_REPOSITORY: public.ecr.aws/aquasecurity/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
 
 jobs:
-  shell:
+  lint:
+    name: lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: shellcheck
+        run: git ls-files -z '*.sh' | xargs -0 shellcheck -S warning
+      - name: yamllint
+        run: pipx run yamllint==1.38.0 --strict .
+      - name: actionlint
+        run: docker run --rm -v "$PWD:/repo" -w /repo rhysd/actionlint:1.7.12@sha256:b1934ee5f1c509618f2508e6eb47ee0d3520686341fec936f3b79331f9315667 -color
+      - name: hadolint
+        run: >
+          git ls-files -z '*Dockerfile*' | xargs -0 docker run --rm -v "$PWD:/repo:ro" -w /repo
+          hadolint/hadolint:v2.15.1@sha256:32dac94127fd60b7b7e3fbfc65e1383b9b5e25c9bfd7b8536de7a539fe68a12d hadolint
+      - name: prometheus rules
         run: |
-          sudo apt-get update -qq && sudo apt-get install -y -qq shellcheck
-          shellcheck $(git ls-files '*.sh')
+          python3 -c 'import yaml; yaml.safe_dump(yaml.safe_load(open("coprocessor/monitoring/rules.yaml"))["spec"], open("/tmp/rules.yml", "w"))'
+          docker run --rm --entrypoint promtool -v /tmp/rules.yml:/rules.yml:ro \
+            prom/prometheus:v3.14.0@sha256:5ce7540c3c00ef4ab0c9d2c995c6a5b9c421f44b4a115d97a2c7af3b1c21cbb0 check rules /rules.yml
+      - name: fhevm ref is pinned on every chart source
+        run: make check-ref
+      - name: image references are pinned
+        run: .github/scripts/list-images.sh --check
 
-  dockerfiles:
+  rust:
+    name: rust (demo)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: coprocessor/demo
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: toolchain
+        uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87  # stable branch; the version comes from rust-toolchain.toml
+        with:
+          toolchain: 1.97.1
+          components: rustfmt, clippy
+      - name: cache
+        uses: Swatinem/rust-cache@779680da715d629ac1d338a641029a2f4372abb5  # v2.8.2
+        with:
+          workspaces: coprocessor/demo
+      - name: rustfmt
+        run: cargo fmt --check
+      - name: clippy
+        run: cargo clippy --locked -- -D warnings
+
+  zizmor:
+    name: zizmor
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: hadolint/hadolint-action@v3.1.0
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          dockerfile: coprocessor/images/Dockerfile
-      - uses: hadolint/hadolint-action@v3.1.0
+          persist-credentials: false
+      - name: audit workflows
+        run: pipx run zizmor==1.30.0 --persona regular .github/workflows
+
+  secrets:
+    name: secrets
+    runs-on: ubuntu-latest
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
         with:
-          dockerfile: coprocessor/images/host-contracts.Dockerfile
-      - uses: hadolint/hadolint-action@v3.1.0
+          persist-credentials: false
+      - name: trivy secret scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
         with:
-          dockerfile: coprocessor/images/gateway-contracts.Dockerfile
-      - uses: hadolint/hadolint-action@v3.1.0
-        with:
-          dockerfile: coprocessor/demo/Dockerfile
+          scan-type: fs
+          scan-ref: .
+          scanners: secret
+          exit-code: '1'
+        env:
+          TRIVY_SECRET_CONFIG: trivy-secret.yaml
 
   manifests:
+    name: manifests
     runs-on: ubuntu-latest
-    env:
-      CRDS: https://raw.githubusercontent.com/datreeio/CRDs-catalog/main/{{.Group}}/{{.ResourceKind}}_{{.ResourceAPIVersion}}.json
     steps:
-      - uses: actions/checkout@v4
-      - name: fhevm ref is pinned on both chart sources
-        run: make check-ref
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
       - name: fhevm charts at the pinned commit
         run: |
           ref=$(cat .fhevm-ref)
           git clone --filter=blob:none --no-checkout https://github.com/zama-ai/fhevm.git /tmp/fhevm
           git -C /tmp/fhevm sparse-checkout set charts/coprocessor charts/coprocessor-sql-exporter charts/contracts charts/kms-connector
           git -C /tmp/fhevm checkout "$ref"
-      - uses: azure/setup-helm@v4
-      - name: kubeconform
-        run: |
-          curl -sSL https://github.com/yannh/kubeconform/releases/latest/download/kubeconform-linux-amd64.tar.gz | tar xz -C /usr/local/bin kubeconform
+          mkdir -p .upstream && cp -r /tmp/fhevm/charts .upstream/charts
+      - name: helm
+        uses: azure/setup-helm@1a275c3b69536ee54be43f2070a358922e12c8d4  # v4.3.1
       - name: render + validate the Argo CD applications
         run: |
           helm repo add argo https://argoproj.github.io/argo-helm >/dev/null
-          helm template root argo/argocd-apps --version 2.0.5 -n argocd -f cluster/apps/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          helm template root argo/argocd-apps --version 2.0.5 -n argocd -f cluster/apps/values.yaml | .github/scripts/kubeconform.sh
       - name: render + validate the coprocessor releases
         run: |
-          helm template coprocessor /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/workers/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template coprocessor-anvil-listener /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/listeners/anvil/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template host-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-contracts/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template gateway-contracts /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-contracts/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template gateway-host-chains /tmp/fhevm/charts/contracts -n coproc -f coprocessor/gateway-host-chains/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template coprocessor-gateway /tmp/fhevm/charts/coprocessor -n coproc -f coprocessor/gateway/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template kms-connector /tmp/fhevm/charts/kms-connector -n coproc -f coprocessor/kms-connector/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
-          helm template host-kms-keygen /tmp/fhevm/charts/contracts -n coproc -f coprocessor/host-kms-keygen/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+          kc=.github/scripts/kubeconform.sh
+          helm template coprocessor .upstream/charts/coprocessor -n coproc -f coprocessor/workers/values.yaml | $kc
+          helm template coprocessor-anvil-listener .upstream/charts/coprocessor -n coproc -f coprocessor/listeners/anvil/values.yaml | $kc
+          helm template host-contracts .upstream/charts/contracts -n coproc -f coprocessor/host-contracts/values.yaml | $kc
+          helm template gateway-contracts .upstream/charts/contracts -n coproc -f coprocessor/gateway-contracts/values.yaml | $kc
+          helm template gateway-host-chains .upstream/charts/contracts -n coproc -f coprocessor/gateway-host-chains/values.yaml | $kc
+          helm template coprocessor-gateway .upstream/charts/coprocessor -n coproc -f coprocessor/gateway/values.yaml | $kc
+          helm template kms-connector .upstream/charts/kms-connector -n coproc -f coprocessor/kms-connector/values.yaml | $kc
+          helm template host-kms-keygen .upstream/charts/contracts -n coproc -f coprocessor/host-kms-keygen/values.yaml | $kc
       - name: render + validate the chain exporter (public sql_exporter chart)
         run: |
           helm repo add sql-exporter https://burningalchemist.github.io/sql_exporter/ >/dev/null
           helm template coprocessor-chain-exporter sql-exporter/sql-exporter --version 0.18.10 -n monitoring -f coprocessor/chain-exporter/values.yaml \
-            | kubeconform -strict -summary -schema-location default -schema-location "$CRDS"
+            | .github/scripts/kubeconform.sh
       - name: render + validate the sql-exporter chart
         run: |
-          helm dependency update /tmp/fhevm/charts/coprocessor-sql-exporter >/dev/null
-          helm template coprocessor-sql-exporter /tmp/fhevm/charts/coprocessor-sql-exporter -n monitoring -f coprocessor/sql-exporter/values.yaml \
-            | kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS"
+          helm dependency update .upstream/charts/coprocessor-sql-exporter >/dev/null
+          helm template coprocessor-sql-exporter .upstream/charts/coprocessor-sql-exporter -n monitoring -f coprocessor/sql-exporter/values.yaml \
+            | .github/scripts/kubeconform.sh -ignore-missing-schemas
       - name: validate plain manifests
-        run: |
-          kubeconform -strict -summary -ignore-missing-schemas -schema-location default -schema-location "$CRDS" \
-            cluster/bootstrap/root-app.yaml \
-            cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml cluster/infra/anvil-gateway.yaml coprocessor/kms-core/kms-core.yaml \
-            coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml \
-            coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml coprocessor/demo/k8s/add.yaml coprocessor/demo/k8s/transfer.yaml
+        run: >
+          .github/scripts/kubeconform.sh -ignore-missing-schemas
+          cluster/bootstrap/root-app.yaml
+          cluster/infra/postgres.yaml cluster/infra/minio.yaml cluster/infra/anvil.yaml cluster/infra/anvil-gateway.yaml
+          coprocessor/kms-core/kms-core.yaml coprocessor/monitoring/rules.yaml coprocessor/monitoring/dashboard.yaml
+          coprocessor/chaos/c1-sns-worker-down.yaml coprocessor/chaos/c2-s3-partition.yaml
+          coprocessor/demo/k8s/add.yaml coprocessor/demo/k8s/transfer.yaml
+
+  images:
+    name: list images
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.list.outputs.images }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: list images
+        id: list
+        run: echo "images=$(.github/scripts/list-images.sh --json)" >> "$GITHUB_OUTPUT"
+
+  image-scan:
+    name: scan ${{ matrix.image }}
+    needs: images
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        image: ${{ fromJSON(needs.images.outputs.matrix) }}
+    steps:
+      - name: checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1  # v7.0.1
+        with:
+          persist-credentials: false
+      - name: trivy image scan
+        uses: aquasecurity/trivy-action@ed142fd0673e97e23eac54620cfb913e5ce36c25  # v0.36.0
+        with:
+          scan-type: image
+          image-ref: ${{ matrix.image }}
+          severity: CRITICAL
+          ignore-unfixed: 'true'
+          exit-code: '1'
+        env:
+          TRIVY_IGNOREFILE: .trivyignore.yaml

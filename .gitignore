@@ -5,3 +5,4 @@ coprocessor/seed/target/
 cluster/bootstrap/.deploy-key
 cluster/bootstrap/.deploy-key.pub
 cluster/bootstrap/secrets/
+.upstream/

@@ -147,8 +147,8 @@ Rules:
 
 ## Bring-up
 
-Prereqs: Docker Desktop, kind, kubectl, helm, gh, make, Rust (rustup picks 1.97.1 from the
-repo), `protobuf`. The fhevm checkout is expected at `../zama-ai-repos/fhevm` with the
+Prereqs: Docker Desktop, kind, kubectl, helm, gh, make, Rust (rustup picks 1.97.1 from
+`coprocessor/demo/rust-toolchain.toml`). The fhevm checkout is expected at `../zama-ai-repos/fhevm` with the
 `fhevm-keys` LFS files fetched.
 
 ```bash
@@ -193,6 +193,28 @@ Local-only shortcuts, all in the runner: the sender gives itself gas on the gate
 the fee is paid with the mocked ZAMA token that `deployAllGatewayContractsForTests` deploys,
 minted on the spot. Encrypted inputs with proofs (`transfer` with an `externalEuint64`) need
 the relayer, which is not here; `transferPlain` encrypts the amount inside the contract instead.
+
+## CI
+
+`.github/workflows/ci.yml` runs on every push and pull request, and weekly, because the pins
+do not change but the advisories do. Every action is pinned to a commit sha and every tool
+image to a digest; dependabot keeps the sha pins current.
+
+- lint: shellcheck, yamllint, actionlint, hadolint on every Dockerfile, promtool on the alert
+  rules, the `.fhevm-ref` pin check, and `.github/scripts/list-images.sh --check`, which fails
+  on any image reference without an exact tag or digest.
+- rust: rustfmt and clippy on the demo runner.
+- zizmor: audit of the workflow itself.
+- secrets: trivy secret scan with the extra rules in `trivy-secret.yaml` (raw hex keys,
+  mnemonic phrases), so a key pasted into a values file fails the build.
+- manifests: every chart release rendered against the fhevm charts at the pinned commit and
+  validated with kubeconform, plus the plain manifests.
+- image scan: trivy on every third-party image that runs in the cluster, CRITICAL and fixed
+  only. Accepted findings live in `.trivyignore.yaml` with a reason and an expiry date; an
+  expired entry fails the weekly run. Images built here (`local/*`) and the minio images
+  (quay.io refuses anonymous pulls) are pinned but not scanned.
+
+`make lint` runs the gates that need no cluster.
 
 ## Notes
 

@@ -5,7 +5,7 @@
 #   make watch     pipeline counters
 #   make demo      3 + 5 and a confidential transfer, decrypted by the KMS: Argo CD sync of coprocessor-demo
 #   make smoke     one trivialEncrypt on the anvil chain, watched through listener and workers
-#   make lint      what CI runs
+#   make lint      the CI gates that run without a cluster (yamllint if installed)
 SHELL := /bin/bash
 CLUSTER ?= zama-practice
 CTX     := kind-$(CLUSTER)
@@ -61,8 +61,11 @@ check-ref:
 	else echo "cluster/apps/values.yaml must pin .fhevm-ref ($$ref) on all nine upstream chart sources, found $$n" >&2; exit 1; fi
 
 lint: check-ref
-	shellcheck $$(git ls-files '*.sh')
-	hadolint coprocessor/images/Dockerfile coprocessor/images/host-contracts.Dockerfile coprocessor/demo/Dockerfile
+	git ls-files -z '*.sh' | xargs -0 shellcheck -S warning
+	git ls-files -z '*Dockerfile*' | xargs -0 hadolint
+	@command -v yamllint >/dev/null && yamllint --strict . || echo "yamllint not installed, skipped"
+	.github/scripts/list-images.sh --check
+	cd coprocessor/demo && cargo fmt --check
 	$(MAKE) render
 
 demo-image:

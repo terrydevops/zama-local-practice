@@ -1,0 +1,25 @@
+# Accepted image-scan findings. Each entry has a reason and an expiry; the weekly run fails
+# once an entry expires. All of them are in postgres:17.9, whose debian base has not shipped
+# the fixes yet; nothing in the list is reachable from the database's own code path.
+vulnerabilities:
+  # perl regex / Archive::Tar bugs: perl is only there for pl/perl, which is not installed
+  - id: CVE-2026-13221
+    statement: perl is not executed by the postgres server; re-check at expiry
+    expired_at: 2026-11-08
+  - id: CVE-2026-42496
+    statement: perl Archive::Tar is not used by the postgres server
+    expired_at: 2026-11-08
+  - id: CVE-2026-8376
+    statement: perl is not executed by the postgres server; 32-bit builds only
+    expired_at: 2026-11-08
+  # gnutls comes in through libldap; postgres here talks plain TCP inside the cluster, no LDAP, no TLS
+  - id: CVE-2026-33845
+    statement: DTLS server bug; gnutls is never used by this postgres
+    expired_at: 2026-11-08
+  - id: CVE-2026-42010
+    statement: gnutls SRP username bug; gnutls is never used by this postgres
+    expired_at: 2026-11-08
+  # Go crypto/tls session resumption in gosu, which only drops privileges at start
+  - id: CVE-2025-68121
+    statement: no TLS connections from gosu
+    expired_at: 2026-11-08

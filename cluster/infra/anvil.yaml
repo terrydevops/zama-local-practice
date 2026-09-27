@@ -130,7 +130,7 @@ spec:
       securityContext: { fsGroup: 1000 }   # the anvil image runs as uid 1000 (foundry)
       initContainers:
         - name: check-state
-          image: python:3-alpine
+          image: python:3.13-alpine
           command: ["python3", "/tools/check-state.py"]
           env:
             - { name: STATE, value: /data/anvil.json }
@@ -223,7 +223,7 @@ spec:
           restartPolicy: Never
           containers:
             - name: kubectl
-              image: bitnami/kubectl:1.35
+              image: alpine/kubectl:1.36.0
               command: ["kubectl", "-n", "infra", "rollout", "restart", "deployment/anvil", "deployment/anvil-gateway"]
               resources:
                 requests: { cpu: 10m, memory: 32Mi }

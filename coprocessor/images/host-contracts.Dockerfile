@@ -1,7 +1,7 @@
 # host-contracts image for the contracts chart deploy Job. Follows the upstream
 # host-contracts/Dockerfile with a public Node base image (the upstream base is private).
 # Context = tar streamed by build.sh from the fhevm checkout root (npm workspace).
-ARG NODE_IMAGE=node:22-alpine
+ARG NODE_IMAGE=node:22.23-alpine
 FROM ${NODE_IMAGE} AS prod
 SHELL ["/bin/ash", "-o", "pipefail", "-c"]
 USER root

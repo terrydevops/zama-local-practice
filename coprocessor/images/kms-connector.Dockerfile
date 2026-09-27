@@ -41,7 +41,7 @@ COPY --from=builder /out/tx-sender /app/kms-connector/bin/tx-sender
 ENTRYPOINT ["/app/kms-connector/bin/tx-sender", "start"]
 
 # sqlx migrations for the connector database, run once like the upstream db-migration image
-FROM postgres:17 AS db-migration
+FROM postgres:17.9 AS db-migration
 COPY --from=builder /out/sqlx/bin/sqlx /usr/local/bin/sqlx
 COPY kms-connector/connector-db/init_db.sh /init_db.sh
 COPY kms-connector/connector-db/migrations /migrations

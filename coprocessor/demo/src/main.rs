@@ -86,11 +86,16 @@ fn env(name: &str) -> Result<String> {
 }
 
 fn addr(name: &str) -> Result<Address> {
-    env(name)?.parse().with_context(|| format!("{name} is not an address"))
+    env(name)?
+        .parse()
+        .with_context(|| format!("{name} is not an address"))
 }
 
 fn env_num<T: std::str::FromStr>(name: &str, default: T) -> T {
-    std::env::var(name).ok().and_then(|v| v.parse().ok()).unwrap_or(default)
+    std::env::var(name)
+        .ok()
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(default)
 }
 
 fn short(handle: &FixedBytes<32>) -> String {
@@ -102,7 +107,9 @@ fn bytecode(env_name: &str, default: &str) -> Result<Bytes> {
     let path = std::env::var(env_name).unwrap_or_else(|_| default.into());
     let json: serde_json::Value =
         serde_json::from_slice(&std::fs::read(&path).with_context(|| format!("read {path}"))?)?;
-    let code = json["bytecode"]["object"].as_str().ok_or_else(|| anyhow!("no bytecode in {path}"))?;
+    let code = json["bytecode"]["object"]
+        .as_str()
+        .ok_or_else(|| anyhow!("no bytecode in {path}"))?;
     code.parse().context("bytecode hex")
 }
 
@@ -115,7 +122,9 @@ async fn deploy<P: Provider>(provider: &P, code: Bytes, ctor_args: Vec<u8>) -> R
         .context("deploy")?
         .get_receipt()
         .await?;
-    receipt.contract_address.ok_or_else(|| anyhow!("deploy tx has no contract address"))
+    receipt
+        .contract_address
+        .ok_or_else(|| anyhow!("deploy tx has no contract address"))
 }
 
 async fn wait_for<T, F, Fut>(what: &str, timeout: Duration, mut f: F) -> Result<T>
@@ -166,7 +175,11 @@ async fn computed(pool: &PgPool, handle: FixedBytes<32>) -> Result<()> {
         }
     })
     .await?;
-    println!("  {} computed after {:.1}s ({len} bytes, type {ct_type})", short(&handle), t0.elapsed().as_secs_f32());
+    println!(
+        "  {} computed after {:.1}s ({len} bytes, type {ct_type})",
+        short(&handle),
+        t0.elapsed().as_secs_f32()
+    );
     Ok(())
 }
 
@@ -189,15 +202,32 @@ async fn committed<P: Provider + Clone>(c: &Ctx<P>, handle: FixedBytes<32>) -> R
     .await?;
     println!(
         "  {} uploaded after {:.1}s  digest64={} digest128={}",
-        short(&handle), t0.elapsed().as_secs_f32(), hex::encode(&d64[..8]), hex::encode(&d128[..8])
+        short(&handle),
+        t0.elapsed().as_secs_f32(),
+        hex::encode(&d64[..8]),
+        hex::encode(&d128[..8])
     );
     let commits = CiphertextCommits::new(c.commits, c.gateway.clone());
-    wait_for("CiphertextCommits on the gateway", Duration::from_secs(240), || {
-        let commits = commits.clone();
-        async move { Ok(commits.isCiphertextMaterialAdded(handle).call().await?.then_some(())) }
-    })
+    wait_for(
+        "CiphertextCommits on the gateway",
+        Duration::from_secs(240),
+        || {
+            let commits = commits.clone();
+            async move {
+                Ok(commits
+                    .isCiphertextMaterialAdded(handle)
+                    .call()
+                    .await?
+                    .then_some(()))
+            }
+        },
+    )
     .await?;
-    println!("  {} committed on the gateway after {:.1}s", short(&handle), t0.elapsed().as_secs_f32());
+    println!(
+        "  {} committed on the gateway after {:.1}s",
+        short(&handle),
+        t0.elapsed().as_secs_f32()
+    );
     Ok(())
 }
 
@@ -207,25 +237,49 @@ async fn committed<P: Provider + Clone>(c: &Ctx<P>, handle: FixedBytes<32>) -> R
 async fn pay<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
     if c.gateway.get_balance(c.sender).await? < U256::from(10u128.pow(18)) {
         c.gateway
-            .raw_request::<_, serde_json::Value>("anvil_setBalance".into(), (c.sender, "0x3635C9ADC5DEA00000"))
+            .raw_request::<_, serde_json::Value>(
+                "anvil_setBalance".into(),
+                (c.sender, "0x3635C9ADC5DEA00000"),
+            )
             .await
             .context("anvil_setBalance on the gateway chain")?;
     }
-    let price = ProtocolPayment::new(c.payment, c.gateway.clone()).getPublicDecryptionPrice().call().await?;
+    let price = ProtocolPayment::new(c.payment, c.gateway.clone())
+        .getPublicDecryptionPrice()
+        .call()
+        .await?;
     let token = ZamaOFT::new(c.zama, c.gateway.clone());
     if token.balanceOf(c.sender).call().await? < price {
-        token.mint(c.sender, price).send().await.context("mint ZAMA")?.get_receipt().await?;
+        token
+            .mint(c.sender, price)
+            .send()
+            .await
+            .context("mint ZAMA")?
+            .get_receipt()
+            .await?;
     }
     if token.allowance(c.sender, c.payment).call().await? < price {
-        token.approve(c.payment, U256::MAX).send().await.context("approve ProtocolPayment")?.get_receipt().await?;
+        token
+            .approve(c.payment, U256::MAX)
+            .send()
+            .await
+            .context("approve ProtocolPayment")?
+            .get_receipt()
+            .await?;
     }
-    println!("  fee {} ZAMA (mocked token, minted here)", format_ether(price));
+    println!(
+        "  fee {} ZAMA (mocked token, minted here)",
+        format_ether(price)
+    );
     Ok(())
 }
 
 /// One public decryption request on the gateway for all the handles; the KMS's answer is an
 /// event on the same contract, its decryptedResult abi-encodes one uint256 per handle.
-async fn public_decrypt<P: Provider + Clone>(c: &Ctx<P>, handles: Vec<FixedBytes<32>>) -> Result<Vec<U256>> {
+async fn public_decrypt<P: Provider + Clone>(
+    c: &Ctx<P>,
+    handles: Vec<FixedBytes<32>>,
+) -> Result<Vec<U256>> {
     pay(c).await?;
     let decryption = Decryption::new(c.decryption, c.gateway.clone());
     let receipt = decryption
@@ -236,7 +290,10 @@ async fn public_decrypt<P: Provider + Clone>(c: &Ctx<P>, handles: Vec<FixedBytes
         .get_receipt()
         .await?;
     if !receipt.status() {
-        return Err(anyhow!("publicDecryptionRequest reverted in tx {}", receipt.transaction_hash));
+        return Err(anyhow!(
+            "publicDecryptionRequest reverted in tx {}",
+            receipt.transaction_hash
+        ));
     }
     let id = receipt
         .logs()
@@ -245,7 +302,10 @@ async fn public_decrypt<P: Provider + Clone>(c: &Ctx<P>, handles: Vec<FixedBytes
         .map(|e| e.decryptionId)
         .ok_or_else(|| anyhow!("no PublicDecryptionRequest event in receipt"))?;
     let from = receipt.block_number.unwrap_or_default();
-    println!("publicDecryptionRequest #{id} tx {} gateway block {from}", receipt.transaction_hash);
+    println!(
+        "publicDecryptionRequest #{id} tx {} gateway block {from}",
+        receipt.transaction_hash
+    );
 
     let t0 = Instant::now();
     let filter = Filter::new()
@@ -253,37 +313,67 @@ async fn public_decrypt<P: Provider + Clone>(c: &Ctx<P>, handles: Vec<FixedBytes
         .event_signature(Decryption::PublicDecryptionResponse::SIGNATURE_HASH)
         .topic1(B256::from(id))
         .from_block(from);
-    let response = wait_for("PublicDecryptionResponse from the KMS", Duration::from_secs(300), || {
-        let gateway = c.gateway.clone();
-        let filter = filter.clone();
-        async move {
-            let logs = gateway.get_logs(&filter).await?;
-            Ok(logs.iter().find_map(|l| Decryption::PublicDecryptionResponse::decode_log(l.as_ref()).ok()))
-        }
-    })
+    let response = wait_for(
+        "PublicDecryptionResponse from the KMS",
+        Duration::from_secs(300),
+        || {
+            let gateway = c.gateway.clone();
+            let filter = filter.clone();
+            async move {
+                let logs = gateway.get_logs(&filter).await?;
+                Ok(logs.iter().find_map(|l| {
+                    Decryption::PublicDecryptionResponse::decode_log(l.as_ref()).ok()
+                }))
+            }
+        },
+    )
     .await?;
     println!(
         "  KMS answered after {:.1}s: {} signature(s), {} bytes",
-        t0.elapsed().as_secs_f32(), response.signatures.len(), response.decryptedResult.len()
+        t0.elapsed().as_secs_f32(),
+        response.signatures.len(),
+        response.decryptedResult.len()
     );
-    let words: Vec<U256> = response.decryptedResult.chunks_exact(32).map(U256::from_be_slice).collect();
+    let words: Vec<U256> = response
+        .decryptedResult
+        .chunks_exact(32)
+        .map(U256::from_be_slice)
+        .collect();
     if words.len() != handles.len() {
-        return Err(anyhow!("expected {} values in decryptedResult, got {}", handles.len(), words.len()));
+        return Err(anyhow!(
+            "expected {} values in decryptedResult, got {}",
+            handles.len(),
+            words.len()
+        ));
     }
     Ok(words)
 }
 
 async fn scenario_add<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
     let (x, y) = (env_num("X", 3u8), env_num("Y", 5u8));
-    let ctor = Add::constructorCall { acl: c.acl, executor: c.executor, kmsVerifier: c.kms }.abi_encode();
+    let ctor = Add::constructorCall {
+        acl: c.acl,
+        executor: c.executor,
+        kmsVerifier: c.kms,
+    }
+    .abi_encode();
     let at = deploy(&c.host, bytecode("ADD_ARTIFACT", "/app/Add.json")?, ctor).await?;
     println!("Add deployed at {at}");
 
     // one transaction: encrypt x, encrypt y, add, allow the sender, allow public decryption
     let contract = Add::new(at, c.host.clone());
-    let receipt = contract.add(x, y).send().await.context("send add")?.get_receipt().await?;
+    let receipt = contract
+        .add(x, y)
+        .send()
+        .await
+        .context("send add")?
+        .get_receipt()
+        .await?;
     if !receipt.status() {
-        return Err(anyhow!("add({x}, {y}) reverted in tx {}", receipt.transaction_hash));
+        return Err(anyhow!(
+            "add({x}, {y}) reverted in tx {}",
+            receipt.transaction_hash
+        ));
     }
     let handle = receipt
         .logs()
@@ -291,7 +381,11 @@ async fn scenario_add<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
         .find_map(|l| Add::Sum::decode_log(l.as_ref()).ok())
         .map(|e| e.handle)
         .ok_or_else(|| anyhow!("no Sum event in receipt"))?;
-    println!("tx {} in block {}", receipt.transaction_hash, receipt.block_number.unwrap_or_default());
+    println!(
+        "tx {} in block {}",
+        receipt.transaction_hash,
+        receipt.block_number.unwrap_or_default()
+    );
     println!("{x} + {y} -> handle {}", hex::encode(handle));
 
     computed(&c.pool, handle).await?;
@@ -306,32 +400,92 @@ async fn scenario_add<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
 }
 
 async fn scenario_transfer<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
-    let (minted, amount, too_much) = (env_num("MINT", 1000u64), env_num("AMOUNT", 250u64), env_num("TOO_MUCH", 900u64));
-    let ctor = PracticeToken::constructorCall { acl: c.acl, executor: c.executor, kmsVerifier: c.kms }.abi_encode();
-    let at = deploy(&c.host, bytecode("TOKEN_ARTIFACT", "/app/PracticeToken.json")?, ctor).await?;
+    let (minted, amount, too_much) = (
+        env_num("MINT", 1000u64),
+        env_num("AMOUNT", 250u64),
+        env_num("TOO_MUCH", 900u64),
+    );
+    let ctor = PracticeToken::constructorCall {
+        acl: c.acl,
+        executor: c.executor,
+        kmsVerifier: c.kms,
+    }
+    .abi_encode();
+    let at = deploy(
+        &c.host,
+        bytecode("TOKEN_ARTIFACT", "/app/PracticeToken.json")?,
+        ctor,
+    )
+    .await?;
     println!("PracticeToken deployed at {at}");
     let token = PracticeToken::new(at, c.host.clone());
 
-    let r = token.mint(minted).send().await.context("mint")?.get_receipt().await?;
-    println!("mint({minted}) tx {} block {}", r.transaction_hash, r.block_number.unwrap_or_default());
-    let r = token.transferPlain(RECIPIENT, amount).send().await.context("transfer")?.get_receipt().await?;
-    println!("transferPlain({amount}) tx {} block {}", r.transaction_hash, r.block_number.unwrap_or_default());
+    let r = token
+        .mint(minted)
+        .send()
+        .await
+        .context("mint")?
+        .get_receipt()
+        .await?;
+    println!(
+        "mint({minted}) tx {} block {}",
+        r.transaction_hash,
+        r.block_number.unwrap_or_default()
+    );
+    let r = token
+        .transferPlain(RECIPIENT, amount)
+        .send()
+        .await
+        .context("transfer")?
+        .get_receipt()
+        .await?;
+    println!(
+        "transferPlain({amount}) tx {} block {}",
+        r.transaction_hash,
+        r.block_number.unwrap_or_default()
+    );
     // more than the balance: the contract transfers an encrypted 0 instead, and the chain
     // shows the same Transfer event either way
-    let r = token.transferPlain(RECIPIENT, too_much).send().await.context("transfer too much")?.get_receipt().await?;
-    println!("transferPlain({too_much}) tx {} block {} (should not change balances)", r.transaction_hash, r.block_number.unwrap_or_default());
+    let r = token
+        .transferPlain(RECIPIENT, too_much)
+        .send()
+        .await
+        .context("transfer too much")?
+        .get_receipt()
+        .await?;
+    println!(
+        "transferPlain({too_much}) tx {} block {} (should not change balances)",
+        r.transaction_hash,
+        r.block_number.unwrap_or_default()
+    );
 
     let h_sender = token.balanceOf(c.sender).call().await?;
     let h_recipient = token.balanceOf(RECIPIENT).call().await?;
-    println!("balance handles: sender {}  recipient {}", hex::encode(h_sender), hex::encode(h_recipient));
+    println!(
+        "balance handles: sender {}  recipient {}",
+        hex::encode(h_sender),
+        hex::encode(h_recipient)
+    );
 
     // the ACL gate: a balance is private until the contract says otherwise
     let acl = ACL::new(c.acl, c.host.clone());
-    println!("ACL allows public decryption of the sender balance: {}", acl.isAllowedForDecryption(h_sender).call().await?);
+    println!(
+        "ACL allows public decryption of the sender balance: {}",
+        acl.isAllowedForDecryption(h_sender).call().await?
+    );
     for account in [c.sender, RECIPIENT] {
-        token.reveal(account).send().await.context("reveal")?.get_receipt().await?;
+        token
+            .reveal(account)
+            .send()
+            .await
+            .context("reveal")?
+            .get_receipt()
+            .await?;
     }
-    println!("after reveal: {}", acl.isAllowedForDecryption(h_sender).call().await?);
+    println!(
+        "after reveal: {}",
+        acl.isAllowedForDecryption(h_sender).call().await?
+    );
 
     computed(&c.pool, h_sender).await?;
     computed(&c.pool, h_recipient).await?;
@@ -341,9 +495,16 @@ async fn scenario_transfer<P: Provider + Clone>(c: &Ctx<P>) -> Result<()> {
     println!("decrypt: sender = {}  recipient = {}", values[0], values[1]);
     let (exp_s, exp_r) = (U256::from(minted - amount), U256::from(amount));
     if values[0] != exp_s || values[1] != exp_r {
-        return Err(anyhow!("expected {exp_s}/{exp_r}, got {}/{}", values[0], values[1]));
+        return Err(anyhow!(
+            "expected {exp_s}/{exp_r}, got {}/{}",
+            values[0],
+            values[1]
+        ));
     }
-    println!("OK: {minted} minted, {amount} transferred, {too_much} refused silently: {} / {}", values[0], values[1]);
+    println!(
+        "OK: {minted} minted, {amount} transferred, {too_much} refused silently: {} / {}",
+        values[0], values[1]
+    );
     Ok(())
 }
 
@@ -358,11 +519,15 @@ async fn main() -> Result<()> {
     };
     let host = connect("RPC_URL")?;
     let gateway = connect("GATEWAY_RPC_URL")?;
-    let pool = PgPool::connect(&env("DATABASE_URL")?).await.context("connect")?;
+    let pool = PgPool::connect(&env("DATABASE_URL")?)
+        .await
+        .context("connect")?;
     println!(
         "host chain {} block {}, gateway chain {} block {}, sender {sender}",
-        host.get_chain_id().await?, host.get_block_number().await?,
-        gateway.get_chain_id().await?, gateway.get_block_number().await?
+        host.get_chain_id().await?,
+        host.get_block_number().await?,
+        gateway.get_chain_id().await?,
+        gateway.get_block_number().await?
     );
     let c = Ctx {
         host,
