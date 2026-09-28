@@ -6,9 +6,10 @@
 # 135 MB a day and no anvil flag bounds it. A dump interrupted mid-write (the pod was
 # OOM-killed at 1Gi) left a truncated file and anvil crash-looped for two days.
 # So: an init container validates the file before anvil starts, repairs a truncated tail,
-# keeps only the last KEEP_BLOCKS blocks, and moves anything it changed aside instead of
-# deleting it. If the file cannot be repaired the pod stays down, which is what the alert
-# is for. A weekly restart re-runs the compaction; the memory limit covers a week of growth.
+# keeps only the last KEEP_BLOCKS blocks, and moves anything it changed aside (the last two
+# pre-compaction copies stay, corrupt originals stay for good). If the file cannot be
+# repaired the pod stays down, which is what the alert is for. A weekly restart re-runs the
+# compaction; the memory limit covers a week of growth.
 # Old block states are evicted from memory to ~/.foundry/anvil/tmp, one 6 MB file per block
 # inside the container layer: 21 GB a day at 1s blocks, which filled the Docker VM disk on
 # 2026-09-28. With eviction to disk off the cache sat at 2.2 GB in memory instead. Nothing here
@@ -33,10 +34,13 @@ metadata:
 data:
   check-state.py: |
     # Validate, repair and compact an anvil --state dump before anvil loads it.
-    # Never deletes data: originals are renamed *.corrupt-<ts> / *.before-compact-<ts>.
-    import json, os, sys, time
+    # Originals are renamed *.corrupt-<ts> / *.before-compact-<ts>. Corrupt originals are kept
+    # for good (evidence, rare); of the before-compact copies only the newest KEEP_ARCHIVES stay,
+    # since every restart makes one and the volume is 1 GiB.
+    import glob, json, os, sys, time
     path = os.environ.get("STATE", "/data/anvil.json")
     keep = int(os.environ.get("KEEP_BLOCKS", "20000"))
+    keep_archives = int(os.environ.get("KEEP_ARCHIVES", "2"))
     if not os.path.exists(path):
         print("no state file, anvil starts a fresh chain"); sys.exit(0)
     data = open(path, "rb").read()
@@ -111,6 +115,9 @@ data:
     tmp = path + ".tmp"
     open(tmp, "wb").write(out); os.replace(tmp, path)
     print(f"state ok: best block {best}, {len(obj['blocks'])} blocks, {len(out)} bytes")
+    archives = sorted(glob.glob(path + ".before-compact-*"))
+    for old in archives[:-keep_archives] if keep_archives > 0 else archives:
+        os.remove(old); print(f"removed old archive {os.path.basename(old)}")
 ---
 apiVersion: v1
 kind: PersistentVolumeClaim
