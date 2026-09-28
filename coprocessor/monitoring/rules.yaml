@@ -103,7 +103,7 @@ spec:
           labels: { severity: warning }
           annotations:
             summary: "{{ $labels.pod }} writes {{ $value | humanize }}B/s"
-            description: "More than the 60s state dump accounts for. Check ~/.foundry/anvil/tmp in the container and the --max-persisted-states flag."
+            description: "More than the 60s state dump accounts for. Check ~/.foundry/anvil/tmp in the container and the --prune-history flag."
 
         - alert: CoprocessorWorkerDown
           expr: up{job=~"coprocessor-.*"} == 0
