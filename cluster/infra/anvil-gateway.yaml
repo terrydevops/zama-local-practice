@@ -57,7 +57,7 @@ spec:
           args:
             - exec anvil --block-time 1 --host 0.0.0.0 --port 8545 --chain-id "$CHAIN_ID"
               --accounts 20 --mnemonic "$MNEMONIC"
-              --state /data/anvil.json --state-interval 60
+              --state /data/anvil.json --state-interval 60 --max-persisted-states 0
           ports: [ { containerPort: 8545 } ]
           volumeMounts: [ { name: state, mountPath: /data } ]
           readinessProbe:
