@@ -181,7 +181,8 @@ make down
 scripts the Makefile calls. UIs: `make argocd-ui` (:8080), `make grafana` (:13000),
 `make prom` (:9090); all anonymous read-only. `make alerts` prints what is firing and
 `make alert-watch` keeps polling and posts a desktop notification for each new alert, since
-nothing else in this setup rings.
+nothing else in this setup rings. `make disk` shows where the Docker disk went, down to the
+container writable layers that `docker system df` hides.
 
 ## End-to-end checks
 

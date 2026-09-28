@@ -2,6 +2,12 @@
 # ServiceMonitor / PrometheusRule in the cluster regardless of labels.
 fullnameOverride: monitoring
 
+defaultRules:
+  disabled:
+    # the kind nodes are containers on the Docker VM; they have no NTP daemon for node-exporter
+    # to see, and the clock is the VM's. Fires forever, means nothing here.
+    NodeClockNotSynchronising: true
+
 prometheus:
   prometheusSpec:
     retention: 2d

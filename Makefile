@@ -12,7 +12,7 @@ CTX     := kind-$(CLUSTER)
 FHEVM_DIR ?= $(CURDIR)/../zama-ai-repos/fhevm
 export FHEVM_DIR KUBE_CONTEXT=$(CTX) KIND_CLUSTER=$(CLUSTER)
 
-.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke chain-compact chain-reset argocd-ui alerts alert-watch grafana prom down
+.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke chain-compact chain-reset argocd-ui alerts alert-watch disk grafana prom down
 
 up: cluster images bootstrap argocd root wait-infra seed
 
@@ -100,6 +100,10 @@ alerts:
 
 alert-watch:
 	cluster/bootstrap/alerts.sh watch
+
+# where the Docker disk went, including the container writable layers docker system df hides
+disk:
+	cluster/bootstrap/disk.sh
 
 grafana:
 	@echo "http://localhost:13000  (anonymous read-only; admin password: secret grafana-admin in monitoring)"
