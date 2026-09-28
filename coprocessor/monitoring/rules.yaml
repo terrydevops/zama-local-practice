@@ -94,6 +94,17 @@ spec:
           annotations:
             summary: "anvil is using more than 70% of its memory limit"
             description: "The state dump has grown; run make chain-compact before the next dump gets OOM-killed and leaves a truncated file."
+        # anvil evicts old block states to its container layer unless --max-persisted-states 0;
+        # the periodic state dump alone is well under 1 MB/s, so a sustained rate above that means
+        # something is writing where no volume is (the 43 GB that filled the Docker disk on 2026-09-28)
+        - alert: AnvilWritingToContainerLayer
+          expr: sum by (pod) (rate(container_fs_writes_bytes_total{namespace="infra", container="anvil"}[15m])) > 2e6
+          for: 30m
+          labels: { severity: warning }
+          annotations:
+            summary: "{{ $labels.pod }} writes {{ $value | humanize }}B/s"
+            description: "More than the 60s state dump accounts for. Check ~/.foundry/anvil/tmp in the container and the --max-persisted-states flag."
+
         - alert: CoprocessorWorkerDown
           expr: up{job=~"coprocessor-.*"} == 0
           for: 2m

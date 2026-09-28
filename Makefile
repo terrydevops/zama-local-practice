@@ -12,7 +12,7 @@ CTX     := kind-$(CLUSTER)
 FHEVM_DIR ?= $(CURDIR)/../zama-ai-repos/fhevm
 export FHEVM_DIR KUBE_CONTEXT=$(CTX) KIND_CLUSTER=$(CLUSTER)
 
-.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke chain-compact chain-reset argocd-ui grafana prom down
+.PHONY: up cluster images bootstrap argocd root wait-infra seed job watch render check-ref lint demo-image demo smoke chain-compact chain-reset argocd-ui alerts alert-watch grafana prom down
 
 up: cluster images bootstrap argocd root wait-infra seed
 
@@ -93,6 +93,13 @@ chain-reset:
 
 argocd-ui:
 	cluster/bootstrap/install.sh ui
+
+# firing alerts, once; alert-watch keeps polling and notifies on the desktop
+alerts:
+	cluster/bootstrap/alerts.sh
+
+alert-watch:
+	cluster/bootstrap/alerts.sh watch
 
 grafana:
 	@echo "http://localhost:13000  (anonymous read-only; admin password: secret grafana-admin in monitoring)"

@@ -22,7 +22,8 @@ The second point is the shape. The charts are installed as the releases the oper
 uses, every Application comes from one Argo CD root, credentials never enter git, images are
 built from the upstream source at a pinned commit. The failures met on the way (a truncated
 anvil state file, buckets lost to an emptyDir rollout, the memory a key activation needs, a
-deploy that succeeded with the wrong fee token) are kept in the commits and the comments.
+deploy that succeeded with the wrong fee token, 43 GB of evicted anvil states in a container
+layer) are kept in the commits and the comments.
 
 What it is not: a node that could join Zama's testnet or mainnet (coprocessors are
 registered through governance), or a production template (see the stand-ins under
@@ -178,7 +179,9 @@ make down
 
 `FHEVM_DIR` points at the checkout if it is not next to this repo. Individual steps are the
 scripts the Makefile calls. UIs: `make argocd-ui` (:8080), `make grafana` (:13000),
-`make prom` (:9090); all anonymous read-only.
+`make prom` (:9090); all anonymous read-only. `make alerts` prints what is firing and
+`make alert-watch` keeps polling and posts a desktop notification for each new alert, since
+nothing else in this setup rings.
 
 ## End-to-end checks
 
